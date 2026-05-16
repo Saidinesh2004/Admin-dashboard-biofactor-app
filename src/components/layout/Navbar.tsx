@@ -1,4 +1,3 @@
-import React from 'react'
 import { Search, Bell, Settings, User, LogOut, Menu } from 'lucide-react'
 import { 
   DropdownMenu, 
