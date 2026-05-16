@@ -1,0 +1,85 @@
+﻿src/components/layout/Navbar.tsx(22,17): error TS2322: Type '{ children: Element; variant: string; size: string; className: string; onClick: () => void; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/components/layout/Navbar.tsx(35,17): error TS2322: Type '{ children: Element[]; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/components/layout/Navbar.tsx(40,17): error TS2322: Type '{ children: Element; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/components/layout/Navbar.tsx(48,21): error TS2322: Type '{ children: Element[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/components/shared/KPICard.tsx(3,10): error TS1484: 'LucideIcon' is a type and must be imported using a type-only import when 'verbatimModuleSyntax' is enabled.
+src/components/ui/badge.tsx(2,40): error TS2307: Cannot find module 'class-variance-authority' or its corresponding type declarations.
+src/components/ui/badge.tsx(30,29): error TS2339: Property 'variant' does not exist on type 'BadgeProps'.
+src/components/ui/button.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority' or its corresponding type declarations.
+src/components/ui/button.tsx(43,17): error TS2339: Property 'variant' does not exist on type 'ButtonProps'.
+src/components/ui/button.tsx(43,26): error TS2339: Property 'size' does not exist on type 'ButtonProps'.
+src/components/ui/toast.tsx(3,40): error TS2307: Cannot find module 'class-variance-authority' or its corresponding type declarations.
+src/components/ui/toaster.tsx(1,26): error TS2307: Cannot find module '@/components/hooks/use-toast' or its corresponding type declarations.
+src/components/ui/toaster.tsx(16,31): error TS7031: Binding element 'id' implicitly has an 'any' type.
+src/components/ui/toaster.tsx(16,35): error TS7031: Binding element 'title' implicitly has an 'any' type.
+src/components/ui/toaster.tsx(16,42): error TS7031: Binding element 'description' implicitly has an 'any' type.
+src/components/ui/toaster.tsx(16,55): error TS7031: Binding element 'action' implicitly has an 'any' type.
+src/hooks/use-toast.ts(161,22): error TS7006: Parameter 'open' implicitly has an 'any' type.
+src/layouts/DashboardLayout.tsx(3,21): error TS2307: Cannot find module './components/layout/Sidebar' or its corresponding type declarations.
+src/layouts/DashboardLayout.tsx(4,20): error TS2307: Cannot find module './components/layout/Navbar' or its corresponding type declarations.
+src/pages/dashboard/DashboardHome.tsx(65,19): error TS2322: Type '{ children: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/dashboard/DashboardHome.tsx(245,21): error TS2322: Type '{ children: (string | Element)[]; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/dashboard/DashboardHome.tsx(264,32): error TS2322: Type '{ children: "Open" | "Bidding" | "Approved" | "In Transit" | "Completed"; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/dashboard/DashboardHome.tsx(303,31): error TS2322: Type '{ children: string; size: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/dashboard/DashboardHome.tsx(304,31): error TS2322: Type '{ children: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/dashboard/DashboardHome.tsx(350,32): error TS2322: Type '{ children: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/dashboard/DashboardHome.tsx(355,33): error TS2322: Type '{ children: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/dashboard/DashboardHome.tsx(380,28): error TS2322: Type '{ children: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/dashboard/DashboardHome.tsx(397,22): error TS2322: Type '{ children: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/loads/ManageLoads.tsx(43,30): error TS2322: Type '{ children: string; variant: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/loads/ManageLoads.tsx(55,19): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/loads/ManageLoads.tsx(72,24): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/loads/ManageLoads.tsx(75,24): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/loads/ManageLoads.tsx(126,35): error TS2322: Type '{ children: Element; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/payments/Payments.tsx(42,20): error TS2322: Type '{ children: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/payments/Payments.tsx(107,27): error TS2322: Type '{ children: (string | Element)[]; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/payments/Payments.tsx(141,39): error TS2322: Type '{ children: Element; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/pod/PODVerification.tsx(39,13): error TS2552: Cannot find name 'Download'. Did you mean 'onload'?
+src/pages/pod/PODVerification.tsx(107,36): error TS2322: Type '{ children: (string | Element)[]; size: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/pod/PODVerification.tsx(110,36): error TS2322: Type '{ children: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/reports/Reports.tsx(47,20): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/reports/Reports.tsx(105,22): error TS2322: Type '{ children: string; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/transporters/Transporters.tsx(47,30): error TS2322: Type '{ children: string; variant: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/transporters/Transporters.tsx(59,19): error TS2322: Type '{ children: Element[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/transporters/Transporters.tsx(81,25): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/transporters/Transporters.tsx(120,34): error TS2322: Type '{ children: (string | number)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/transporters/Transporters.tsx(136,39): error TS2322: Type '{ children: Element; size: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/transporters/Transporters.tsx(141,43): error TS2322: Type '{ children: Element; variant: string; size: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/transporters/Transporters.tsx(146,72): error TS2304: Cannot find name 'Eye'.
+src/pages/trips/Trips.tsx(31,30): error TS2322: Type '{ children: string; variant: string; }' is not assignable to type 'IntrinsicAttributes & BadgeProps'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & BadgeProps'.
+src/pages/trips/Trips.tsx(43,19): error TS2322: Type '{ children: (string | Element)[]; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'variant' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+src/pages/trips/Trips.tsx(122,30): error TS2322: Type '{ children: Element; size: string; variant: string; className: string; }' is not assignable to type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
+  Property 'size' does not exist on type 'IntrinsicAttributes & ButtonProps & RefAttributes<HTMLButtonElement>'.
