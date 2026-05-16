@@ -3,10 +3,8 @@ import {
   Truck, 
   MapPin, 
   Clock, 
-  Search, 
   Filter, 
   Navigation,
-  ExternalLink,
   MoreHorizontal,
   Phone
 } from 'lucide-react'

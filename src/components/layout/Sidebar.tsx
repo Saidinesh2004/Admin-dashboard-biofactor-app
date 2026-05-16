@@ -14,10 +14,8 @@ import {
   ChevronLeft,
   ChevronRight,
   TrendingUp,
-  History,
   FileText,
-  UserCheck,
-  Bell
+  UserCheck
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/useStore'
 
