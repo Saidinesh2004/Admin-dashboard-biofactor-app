@@ -1,4 +1,5 @@
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+import React from 'react'
 import { motion } from 'framer-motion'
 import type { LucideIcon } from 'lucide-react'
 import { TrendingUp, TrendingDown } from 'lucide-react'
