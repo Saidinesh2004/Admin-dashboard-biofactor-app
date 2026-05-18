@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { useLoadStore, Load } from '@/store/loadStore';
+import { useLoadStore, type Load } from '@/store/loadStore';
 import { exportToExcel } from '@/utils/exportCsv';
 
 export default function ManageLoads() {

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { loadService, Load } from '@/services/loadService';
+import { loadService, type Load } from '@/services/loadService';
 
 export type { Load };
 

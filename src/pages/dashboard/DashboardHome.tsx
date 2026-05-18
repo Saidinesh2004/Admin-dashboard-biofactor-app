@@ -33,7 +33,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import KPICard from '@/components/shared/KPICard'
-import { useLoadStore, Load } from '@/store/loadStore'
+import { useLoadStore, type Load } from '@/store/loadStore'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
 
