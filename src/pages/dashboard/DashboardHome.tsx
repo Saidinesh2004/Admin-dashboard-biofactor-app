@@ -292,7 +292,7 @@ const DashboardHome = () => {
                    </div>
                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <TrendingUp size={14} className="text-orange-500" />
-                      <span className="font-bold text-orange-600">{load.bidCount} Bids</span>
+                      <span className="font-bold text-orange-600">{load.bids?.length || 0} Bids</span>
                    </div>
                    <div className="flex items-center gap-1.5 text-xs text-gray-500">
                       <Package size={14} className="text-gray-400" />
