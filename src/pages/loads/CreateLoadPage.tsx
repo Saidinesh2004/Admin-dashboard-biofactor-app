@@ -295,9 +295,9 @@ export default function CreateLoadPage() {
                   <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b pb-2">Cargo & Pricing Details</h3>
                   
                   <div className="space-y-5">
-                    {/* Bid ID */}
+                    {/* Reference ID */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-600 uppercase">Bid ID</label>
+                      <label className="text-xs font-bold text-gray-600 uppercase">Reference ID</label>
                       <Input 
                         name="bidId"
                         value={formData.bidId}

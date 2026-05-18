@@ -420,7 +420,7 @@ export default function ManageLoads() {
                   <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex items-center gap-3">
                     <TrendingUp size={18} className="text-gray-400" />
                     <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Bid ID</p>
+                      <p className="text-[10px] text-gray-400 font-bold uppercase">Reference ID</p>
                       <p className="text-sm font-semibold text-gray-800 font-mono text-xs">{selectedLoad.bidId}</p>
                     </div>
                   </div>
