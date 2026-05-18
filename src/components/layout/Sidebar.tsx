@@ -25,7 +25,6 @@ const menuItems = [
   { group: "LOADS & BIDS", items: [
     { name: "Create Load", icon: MapPin, path: "/create-load" },
     { name: "Manage Loads", icon: ClipboardList, path: "/loads" },
-    { name: "All Bids", icon: TrendingUp, path: "/bids" },
     { name: "Bid Analytics", icon: BarChart3, path: "/bids/analytics" }
   ]},
   { group: "PAYMENTS", items: [

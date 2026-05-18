@@ -17,7 +17,6 @@ const App = () => {
           <Route path="loads" element={<ManageLoads />} />
           <Route path="create-load" element={<CreateLoadPage />} />
           
-          <Route path="bids" element={<ManageLoads />} />
           <Route path="bids/analytics" element={<Reports />} />
           
           <Route path="payments" element={<Payments />} />
