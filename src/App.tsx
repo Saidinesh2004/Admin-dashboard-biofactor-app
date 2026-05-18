@@ -7,6 +7,7 @@ import Trips from './pages/trips/Trips'
 import PODVerification from './pages/pod/PODVerification'
 import Reports from './pages/reports/Reports'
 import Payments from './pages/payments/Payments'
+import CreateLoadPage from './pages/loads/CreateLoadPage'
 
 const App = () => {
   return (
@@ -15,7 +16,7 @@ const App = () => {
         <Route path="/" element={<DashboardLayout />}>
           <Route index element={<DashboardHome />} />
           <Route path="loads" element={<ManageLoads />} />
-          <Route path="loads/create" element={<DashboardHome />} />
+          <Route path="create-load" element={<CreateLoadPage />} />
           <Route path="bids" element={<ManageLoads />} />
           <Route path="bids/analytics" element={<Reports />} />
           <Route path="trips" element={<Trips />} />

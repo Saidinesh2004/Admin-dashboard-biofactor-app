@@ -23,7 +23,7 @@ const menuItems = [
     { name: "Overview", icon: LayoutDashboard, path: "/" }
   ]},
   { group: "LOADS & BIDS", items: [
-    { name: "Create Load", icon: MapPin, path: "/loads/create" },
+    { name: "Create Load", icon: MapPin, path: "/create-load" },
     { name: "Manage Loads", icon: ClipboardList, path: "/loads" },
     { name: "All Bids", icon: TrendingUp, path: "/bids" },
     { name: "Bid Analytics", icon: BarChart3, path: "/bids/analytics" }
