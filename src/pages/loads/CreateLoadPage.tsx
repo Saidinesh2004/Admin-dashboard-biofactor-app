@@ -34,7 +34,7 @@ export default function CreateLoadPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => ({ ...prev, [name as keyof typeof formData]: value }));
     // Clear error when typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
