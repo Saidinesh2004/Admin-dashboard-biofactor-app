@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
   Package, 
@@ -8,7 +10,8 @@ import {
   ArrowRight,
   PlusCircle,
   Clock,
-  CircleDollarSign
+  CircleDollarSign,
+  Loader2
 } from 'lucide-react'
 import { 
   PieChart, 
@@ -31,6 +34,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import KPICard from '@/components/shared/KPICard'
 import { useLogisticsStore } from '@/store/useStore'
 import { Link } from 'react-router-dom'
+import { useToast } from '@/hooks/use-toast'
 
 const pieData = [
   { name: 'Open Loads', value: 40, color: '#136B31' },
@@ -50,7 +54,51 @@ const barData = [
 ]
 
 const DashboardHome = () => {
-  const { loads } = useLogisticsStore()
+  const { loads, addLoad } = useLogisticsStore()
+  const navigate = useNavigate()
+  const { toast } = useToast()
+  const [isQuickLoading, setIsQuickLoading] = useState(false)
+  const [quickForm, setQuickForm] = useState({
+    from: '',
+    to: '',
+    product: '',
+    quantity: '',
+    rate: '',
+    date: ''
+  })
+
+  const handleQuickSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickForm.from || !quickForm.to || !quickForm.product || !quickForm.quantity || !quickForm.rate || !quickForm.date) {
+      toast({ title: 'Validation Error', description: 'Please fill all quick form fields', variant: 'destructive' });
+      return;
+    }
+    
+    setIsQuickLoading(true);
+    setTimeout(() => {
+      setIsQuickLoading(false);
+      addLoad({
+        id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
+        bidId: `BF-BID-2026-${Math.floor(100 + Math.random() * 900)}`,
+        from: quickForm.from,
+        stops: [],
+        to: quickForm.to,
+        product: quickForm.product,
+        quantity: parseFloat(quickForm.quantity),
+        rate: parseFloat(quickForm.rate),
+        totalAmount: parseFloat(quickForm.quantity) * parseFloat(quickForm.rate),
+        date: quickForm.date,
+        vehicleType: 'TBD',
+        status: 'Open',
+        bids: [],
+        createdAt: Date.now()
+      });
+      
+      toast({ title: "Success", description: "Quick load published successfully.", className: "bg-green-500 text-white border-none" });
+      setQuickForm({ from: '', to: '', product: '', quantity: '', rate: '', date: '' });
+      navigate('/loads');
+    }, 1000);
+  };
 
   return (
     <div className="space-y-8 pb-12">
@@ -74,7 +122,7 @@ const DashboardHome = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <KPICard 
           title="Total Loads" 
-          value={342} 
+          value={loads.length} 
           icon={Package} 
           trend={12} 
           trendType="up" 
@@ -82,7 +130,7 @@ const DashboardHome = () => {
         />
         <KPICard 
           title="Active Bids" 
-          value={156} 
+          value={loads.reduce((acc, l) => acc + (l.status === 'Bidding' ? l.bids.length : 0), 0)} 
           icon={TrendingUp} 
           trend={8} 
           trendType="up" 
@@ -90,15 +138,15 @@ const DashboardHome = () => {
         />
         <KPICard 
           title="Approved Loads" 
-          value={84} 
+          value={loads.filter(l => l.status === 'Assigned' || l.status === 'Approved').length} 
           icon={CheckCircle} 
           trend={5} 
           trendType="down" 
           color="bg-green-600" 
         />
         <KPICard 
-          title="Revenue" 
-          value="₹14.5L" 
+          title="Open Loads" 
+          value={loads.filter(l => l.status === 'Open').length} 
           icon={CircleDollarSign} 
           trend={22} 
           trendType="up" 
@@ -203,25 +251,25 @@ const DashboardHome = () => {
             <p className="text-xs text-green-600/80 mt-1">Post a new load requirement to the marketplace instantly.</p>
           </div>
           <CardContent className="p-6">
-            <form className="space-y-4">
+            <form className="space-y-4" onSubmit={handleQuickSubmit}>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">From Location</label>
-                  <Input placeholder="City, State" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <Input value={quickForm.from} onChange={e => setQuickForm({...quickForm, from: e.target.value})} placeholder="City, State" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">To Location</label>
-                  <Input placeholder="City, State" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <Input value={quickForm.to} onChange={e => setQuickForm({...quickForm, to: e.target.value})} placeholder="City, State" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Product Type</label>
-                  <Input placeholder="e.g. Rice, Steel" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <Input value={quickForm.product} onChange={e => setQuickForm({...quickForm, product: e.target.value})} placeholder="e.g. Rice, Steel" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Quantity (Tonnes)</label>
-                  <Input type="number" placeholder="0.00" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <Input value={quickForm.quantity} onChange={e => setQuickForm({...quickForm, quantity: e.target.value})} type="number" placeholder="0.00" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -229,16 +277,16 @@ const DashboardHome = () => {
                   <label className="text-xs font-bold text-gray-600 uppercase">Base Rate / Tonne</label>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
-                    <Input type="number" placeholder="0.00" className="pl-7 bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                    <Input value={quickForm.rate} onChange={e => setQuickForm({...quickForm, rate: e.target.value})} type="number" placeholder="0.00" className="pl-7 bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                   </div>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Dispatch Date</label>
-                  <Input type="date" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <Input value={quickForm.date} onChange={e => setQuickForm({...quickForm, date: e.target.value})} type="date" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
               </div>
-              <Button className="w-full bg-green-600 hover:bg-green-700 text-white mt-4 py-6 font-bold uppercase tracking-wider shadow-md">
-                Create & Publish Load
+              <Button type="submit" disabled={isQuickLoading} className="w-full bg-green-600 hover:bg-green-700 text-white mt-4 py-6 font-bold uppercase tracking-wider shadow-md">
+                {isQuickLoading ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Publishing...</> : "Create & Publish Load"}
               </Button>
             </form>
           </CardContent>
