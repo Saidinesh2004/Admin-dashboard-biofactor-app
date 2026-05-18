@@ -34,9 +34,7 @@ const menuItems = [
     { name: "Bulk Registrations", icon: FileText, path: "/bulk-registrations" }
   ]},
   { group: "REPORTS", items: [
-    { name: "Business Reports", icon: BarChart3, path: "/reports" },
-    { name: "Load Reports", icon: FileText, path: "/reports/loads" },
-    { name: "Payment Reports", icon: CreditCard, path: "/reports/payments" }
+    { name: "Business Reports", icon: BarChart3, path: "/reports" }
   ]},
   { group: "SETTINGS", items: [
     { name: "General Settings", icon: Settings, path: "/settings" },

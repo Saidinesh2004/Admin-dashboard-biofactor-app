@@ -24,8 +24,6 @@ const App = () => {
           <Route path="bulk-registrations" element={<BulkRegistrationPage />} />
           
           <Route path="reports" element={<Reports />} />
-          <Route path="reports/loads" element={<Reports />} />
-          <Route path="reports/payments" element={<Reports />} />
           
           <Route path="settings" element={<div>General Settings</div>} />
           <Route path="settings/documents" element={<div>Documents</div>} />
