@@ -13,6 +13,7 @@ import {
 export default function CreateLoadPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const addLoad = useLogisticsStore(state => state.addLoad);
   
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -99,14 +100,35 @@ export default function CreateLoadPage() {
     
     setTimeout(() => {
       setIsLoading(false);
+      
+      const newLoad = {
+        id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
+        bidId: formData.bidId,
+        from: formData.fromLocation,
+        stops: validStops,
+        to: formData.toLocation,
+        product: 'General Cargo', // Default or add field
+        quantity: parseFloat(formData.tonnes),
+        rate: parseFloat(formData.costPerTonne),
+        totalAmount: bidAmount,
+        date: formData.dispatchDate,
+        vehicleType: 'TBD',
+        status: 'Open' as const,
+        bids: [],
+        createdAt: Date.now()
+      };
+      
+      addLoad(newLoad);
+      
       toast({
         title: "Success",
-        description: "Load created successfully with configured route.",
+        description: "Load published successfully.",
         variant: "default",
         className: "bg-green-500 text-white border-none",
       });
-      handleReset();
-    }, 1500);
+      
+      navigate('/loads');
+    }, 1000);
   };
 
   const handleReset = () => {

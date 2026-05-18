@@ -15,64 +15,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from '@/hooks/use-toast';
 import { exportToCSV, exportToExcel } from '@/utils/exportCsv';
 
-type BidStatus = 'Pending' | 'Approved' | 'Rejected' | 'Negotiating' | 'Waiting Confirmation';
-
-export interface Bid {
-  id: string;
-  rank: number;
-  transporterName: string;
-  bidAmount: number;
-  pricePerTonne: number;
-  eta: string;
-  vehicleType: string;
-  rating: number;
-  status: BidStatus;
-}
-
-export interface Load {
-  id: string;
-  from: string;
-  to: string;
-  product: string;
-  quantity: number;
-  rate: number;
-  date: string;
-  vehicleType: string;
-  status: 'Open' | 'Bidding' | 'Approved' | 'Assigned' | 'Completed' | 'Cancelled';
-  bids: Bid[];
-}
-
-const mockBidsGenerator = (baseRate: number, qty: number): Bid[] => {
-  const transporters = ['FastFreight', 'SafeWay Logistics', 'BlueDart Express', 'Agarwal Movers', 'VRL Logistics', 'Gati Express', 'TCI Freight'];
-  return transporters.map((t) => {
-    const variation = Math.floor(Math.random() * 300) - 150; 
-    const pricePerTonne = baseRate + variation;
-    const bidAmount = pricePerTonne * qty;
-    return {
-      id: `BID-${Math.floor(Math.random() * 10000)}`,
-      rank: 0,
-      transporterName: t,
-      bidAmount,
-      pricePerTonne,
-      eta: `${Math.floor(Math.random() * 24 + 12)} hours`,
-      vehicleType: '22-Tonne Open',
-      rating: Number((Math.random() * 1 + 4).toFixed(1)), // 4.0 to 5.0
-      status: 'Pending' as BidStatus,
-    }
-  }).sort((a, b) => a.bidAmount - b.bidAmount).map((b, i) => ({ ...b, rank: i + 1 }));
-}
-
-const INITIAL_LOADS: Load[] = [
-  { id: 'LD-1001', from: 'Kolkata, WB', to: 'Patna, BR', product: 'Rice', quantity: 25, rate: 2200, date: '2026-05-18', vehicleType: '22-Tonne Open', status: 'Bidding', bids: mockBidsGenerator(2200, 25) },
-  { id: 'LD-1002', from: 'Nagpur, MH', to: 'Hyderabad, TS', product: 'Oranges', quantity: 15, rate: 1800, date: '2026-05-19', vehicleType: '19-Tonne Closed', status: 'Open', bids: mockBidsGenerator(1800, 15) },
-  { id: 'LD-1003', from: 'Jalandhar, PB', to: 'Delhi, DL', product: 'Wheat', quantity: 30, rate: 1200, date: '2026-05-17', vehicleType: '32-Tonne Open', status: 'Assigned', bids: mockBidsGenerator(1200, 30).map((b,i) => i===0 ? {...b, status: 'Approved'} : b) },
-  { id: 'LD-1004', from: 'Mumbai, MH', to: 'Bangalore, KA', product: 'Steel', quantity: 40, rate: 3100, date: '2026-05-20', vehicleType: '40-Tonne Flatbed', status: 'Bidding', bids: mockBidsGenerator(3100, 40) },
-  { id: 'LD-1005', from: 'Chennai, TN', to: 'Kochi, KL', product: 'Fertilizer', quantity: 20, rate: 1500, date: '2026-05-21', vehicleType: '22-Tonne Closed', status: 'Completed', bids: mockBidsGenerator(1500, 20).map((b,i) => i===0 ? {...b, status: 'Approved'} : b) },
-];
+import { Bid, Load, BidStatus, useLogisticsStore } from '@/store/useStore';
 
 export default function ManageLoads() {
   const { toast } = useToast();
-  const [loads, setLoads] = useState<Load[]>(INITIAL_LOADS);
+  const loads = useLogisticsStore(state => state.loads);
+  const updateLoadStatus = useLogisticsStore(state => state.updateLoadStatus);
+  const updateLoadBids = useLogisticsStore(state => state.updateLoadBids);
   
   // Filtering
   const [search, setSearch] = useState('');
@@ -87,7 +36,8 @@ export default function ManageLoads() {
   // Derived State
   const filteredLoads = useMemo(() => {
     return loads.filter(l => {
-      const matchesSearch = l.id.toLowerCase().includes(search.toLowerCase()) || l.from.toLowerCase().includes(search.toLowerCase()) || l.to.toLowerCase().includes(search.toLowerCase());
+      const stopsMatch = l.stops ? l.stops.some(stop => stop.toLowerCase().includes(search.toLowerCase())) : false;
+      const matchesSearch = l.id.toLowerCase().includes(search.toLowerCase()) || l.from.toLowerCase().includes(search.toLowerCase()) || l.to.toLowerCase().includes(search.toLowerCase()) || stopsMatch;
       const matchesStatus = statusFilter === 'All' || l.status === statusFilter;
       const matchesProduct = productFilter === 'All' || l.product === productFilter;
       return matchesSearch && matchesStatus && matchesProduct;
@@ -143,65 +93,46 @@ export default function ManageLoads() {
   };
 
   const handleApproveBid = (loadId: string, bidId: string) => {
-    setLoads(prev => prev.map(l => {
-      if (l.id === loadId) {
-        return {
-          ...l,
-          status: 'Assigned',
-          bids: l.bids.map(b => b.id === bidId ? { ...b, status: 'Approved' } : { ...b, status: 'Rejected' })
-        };
-      }
-      return l;
-    }));
+    const load = loads.find(l => l.id === loadId);
+    if (!load) return;
+    
+    const newBids = load.bids.map(b => b.id === bidId ? { ...b, status: 'Approved' as BidStatus } : { ...b, status: 'Rejected' as BidStatus });
+    updateLoadBids(loadId, newBids);
+    updateLoadStatus(loadId, 'Assigned');
+    
     toast({ title: 'Bid Approved', description: `Load ${loadId} assigned to transporter.`, className: "bg-green-500 text-white border-none" });
     
     if (selectedLoad?.id === loadId) {
-      setSelectedLoad(prev => prev ? ({
-        ...prev,
-        status: 'Assigned',
-        bids: prev.bids.map(b => b.id === bidId ? { ...b, status: 'Approved' as BidStatus } : { ...b, status: 'Rejected' as BidStatus })
-      }) : null);
+      setSelectedLoad(prev => prev ? ({ ...prev, status: 'Assigned', bids: newBids }) : null);
     }
   };
 
   const handleRejectBid = (loadId: string, bidId: string) => {
-    setLoads(prev => prev.map(l => {
-      if (l.id === loadId) {
-        return {
-          ...l,
-          bids: l.bids.map(b => b.id === bidId ? { ...b, status: 'Rejected' } : b)
-        };
-      }
-      return l;
-    }));
+    const load = loads.find(l => l.id === loadId);
+    if (!load) return;
+    
+    const newBids = load.bids.map(b => b.id === bidId ? { ...b, status: 'Rejected' as BidStatus } : b);
+    updateLoadBids(loadId, newBids);
+    
     toast({ title: 'Bid Rejected', description: 'Transporter has been notified.' });
     if (selectedLoad?.id === loadId) {
-      setSelectedLoad(prev => prev ? ({
-        ...prev,
-        bids: prev.bids.map(b => b.id === bidId ? { ...b, status: 'Rejected' as BidStatus } : b)
-      }) : null);
+      setSelectedLoad(prev => prev ? ({ ...prev, bids: newBids }) : null);
     }
   };
 
   const handleNegotiateSubmit = () => {
     if (!negotiateBid || !negotiationAmount) return;
     
-    setLoads(prev => prev.map(l => {
-      if (l.id === negotiateBid.loadId) {
-        return {
-          ...l,
-          bids: l.bids.map(b => b.id === negotiateBid.bid.id ? { ...b, status: 'Negotiating' } : b)
-        };
-      }
-      return l;
-    }));
+    const load = loads.find(l => l.id === negotiateBid.loadId);
+    if (!load) return;
+    
+    const newBids = load.bids.map(b => b.id === negotiateBid.bid.id ? { ...b, status: 'Negotiating' as BidStatus } : b);
+    updateLoadBids(negotiateBid.loadId, newBids);
+    
     toast({ title: 'Negotiation Sent', description: `Counter offer of ₹${negotiationAmount} sent.` });
     
     if (selectedLoad?.id === negotiateBid.loadId) {
-      setSelectedLoad(prev => prev ? ({
-        ...prev,
-        bids: prev.bids.map(b => b.id === negotiateBid.bid.id ? { ...b, status: 'Negotiating' as BidStatus } : b)
-      }) : null);
+      setSelectedLoad(prev => prev ? ({ ...prev, bids: newBids }) : null);
     }
     
     setNegotiateBid(null);
@@ -324,8 +255,14 @@ export default function ManageLoads() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium">{load.from}</span>
+                        {load.stops && load.stops.length > 0 && load.stops.map((stop, idx) => (
+                          <React.Fragment key={idx}>
+                             <ArrowRight size={14} className="text-orange-400" />
+                             <span className="text-sm font-medium text-orange-600">{stop}</span>
+                          </React.Fragment>
+                        ))}
                         <ArrowRight size={14} className="text-gray-300" />
                         <span className="text-sm font-medium">{load.to}</span>
                       </div>
