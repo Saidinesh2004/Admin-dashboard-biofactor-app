@@ -32,9 +32,6 @@ const menuItems = [
   { group: "USERS", items: [
     { name: "Users", icon: Users, path: "/users" }
   ]},
-  { group: "VEHICLES", items: [
-    { name: "Manage Vehicles", icon: Truck, path: "/vehicles" }
-  ]},
   { group: "REPORTS", items: [
     { name: "Business Reports", icon: BarChart3, path: "/reports" },
     { name: "Load Reports", icon: FileText, path: "/reports/loads" },
