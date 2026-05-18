@@ -27,8 +27,7 @@ const menuItems = [
     { name: "Manage Loads", icon: ClipboardList, path: "/loads" }
   ]},
   { group: "PAYMENTS", items: [
-    { name: "Payments", icon: CreditCard, path: "/payments" },
-    { name: "Invoices", icon: FileText, path: "/invoices" }
+    { name: "Payments", icon: CreditCard, path: "/payments" }
   ]},
   { group: "USERS", items: [
     { name: "Users", icon: Users, path: "/users" }

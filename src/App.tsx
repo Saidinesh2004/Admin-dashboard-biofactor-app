@@ -18,7 +18,6 @@ const App = () => {
           <Route path="create-load" element={<CreateLoadPage />} />
           
           <Route path="payments" element={<Payments />} />
-          <Route path="invoices" element={<Payments />} />
           
           <Route path="users" element={<Transporters />} />
           <Route path="vehicles" element={<Transporters />} />
