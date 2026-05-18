@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, ArrowLeft, Send, RotateCcw, MapPin, Calendar, Weight, CircleDollarSign } from 'lucide-react';
+import { 
+  Loader2, ArrowLeft, Send, RotateCcw, Calendar, 
+  Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route
+} from 'lucide-react';
 
 export default function CreateLoadPage() {
   const navigate = useNavigate();
@@ -15,6 +18,7 @@ export default function CreateLoadPage() {
   const [formData, setFormData] = useState({
     bidId: 'BF-BID-2026-001',
     fromLocation: '',
+    stops: [] as string[],
     toLocation: '',
     dispatchDate: '',
     tonnes: '',
@@ -35,10 +39,32 @@ export default function CreateLoadPage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name as keyof typeof formData]: value }));
-    // Clear error when typing
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
+  };
+
+  const handleStopChange = (index: number, value: string) => {
+    setFormData(prev => {
+      const newStops = [...prev.stops];
+      newStops[index] = value;
+      return { ...prev, stops: newStops };
+    });
+    if (errors[`stop_${index}`]) {
+      setErrors(prev => ({ ...prev, [`stop_${index}`]: '' }));
+    }
+  };
+
+  const addStop = () => {
+    setFormData(prev => ({ ...prev, stops: [...prev.stops, ''] }));
+  };
+
+  const removeStop = (index: number) => {
+    setFormData(prev => {
+      const newStops = [...prev.stops];
+      newStops.splice(index, 1);
+      return { ...prev, stops: newStops };
+    });
   };
 
   const validate = () => {
@@ -49,27 +75,36 @@ export default function CreateLoadPage() {
     if (!formData.tonnes || parseFloat(formData.tonnes) <= 0) newErrors.tonnes = 'Enter a valid number of tonnes';
     if (!formData.costPerTonne || parseFloat(formData.costPerTonne) <= 0) newErrors.costPerTonne = 'Enter a valid cost per tonne';
     
+    // Check for duplicate stops including from/to
+    const allLocations = [formData.fromLocation.trim().toLowerCase(), ...formData.stops.map(s => s.trim().toLowerCase()), formData.toLocation.trim().toLowerCase()].filter(Boolean);
+    const uniqueLocations = new Set(allLocations);
+    if (uniqueLocations.size !== allLocations.length) {
+      newErrors.route = 'Duplicate locations are not allowed in the route.';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!validate()) return;
+    if (!validate()) {
+      if (errors.route) {
+        toast({ title: 'Validation Error', description: errors.route, variant: 'destructive' });
+      }
+      return;
+    }
 
     setIsLoading(true);
     
-    // Simulate API call
     setTimeout(() => {
       setIsLoading(false);
       toast({
         title: "Success",
-        description: "Load created successfully.",
+        description: "Load created successfully with configured route.",
         variant: "default",
         className: "bg-green-500 text-white border-none",
       });
-      // Optionally navigate back or reset form
-      // navigate('/loads');
       handleReset();
     }, 1500);
   };
@@ -79,6 +114,7 @@ export default function CreateLoadPage() {
     setFormData({
       bidId: `BF-BID-2026-${randomNum}`,
       fromLocation: '',
+      stops: [],
       toLocation: '',
       dispatchDate: '',
       tonnes: '',
@@ -87,8 +123,11 @@ export default function CreateLoadPage() {
     setErrors({});
   };
 
+  const validStops = formData.stops.filter(s => s.trim() !== '');
+  const routeArray = [formData.fromLocation || 'Origin', ...validStops, formData.toLocation || 'Destination'];
+
   return (
-    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6">
+    <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6 pb-20">
       <div className="flex items-center gap-4 mb-8">
         <Button 
           variant="outline" 
@@ -100,7 +139,7 @@ export default function CreateLoadPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Create New Load</h1>
-          <p className="text-sm text-gray-500">Create and publish a new transportation bid.</p>
+          <p className="text-sm text-gray-500">Create and publish a new transportation bid with dynamic routing.</p>
         </div>
       </div>
 
@@ -111,144 +150,222 @@ export default function CreateLoadPage() {
       >
         <Card className="border-0 shadow-lg bg-white overflow-hidden rounded-2xl">
           <CardHeader className="bg-gray-50/50 border-b border-gray-100 pb-6">
-            <CardTitle className="text-lg font-semibold text-gray-800">Bid Information</CardTitle>
-            <CardDescription>Fill in the details below to generate a new load requirement.</CardDescription>
+            <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
+              <Route className="w-5 h-5 text-primary" />
+              Route & Bid Configuration
+            </CardTitle>
+            <CardDescription>Plan your logistics route and define bid parameters.</CardDescription>
           </CardHeader>
           <CardContent className="p-6 md:p-8">
-            <form onSubmit={handleSubmit} className="space-y-8">
+            <form onSubmit={handleSubmit} className="space-y-10">
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
                 
-                {/* Bid ID */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                    Bid ID
-                  </label>
-                  <Input 
-                    name="bidId"
-                    value={formData.bidId}
-                    disabled
-                    className="bg-gray-50 font-mono text-gray-500 border-gray-200"
-                  />
-                  <p className="text-xs text-gray-400">Auto-generated system ID</p>
+                {/* Left Column: Route Builder */}
+                <div className="space-y-6">
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b pb-2">Route Planner</h3>
+                  
+                  <div className="relative pl-8 space-y-6 py-2">
+                    {/* Vertical Dashed Timeline Line */}
+                    <div className="absolute left-[11px] top-6 bottom-6 w-0.5 border-l-2 border-dashed border-gray-300"></div>
+                    
+                    {/* From Location */}
+                    <div className="relative z-10">
+                      <div className="absolute -left-[32.5px] top-3 w-4 h-4 rounded-full bg-blue-500 border-[3px] border-white shadow-md"></div>
+                      <label className="text-xs font-bold text-gray-600 uppercase mb-1 block">From Location <span className="text-red-500">*</span></label>
+                      <Input 
+                        placeholder="e.g., Hyderabad"
+                        name="fromLocation"
+                        value={formData.fromLocation}
+                        onChange={handleChange}
+                        className={`bg-white border-gray-200 shadow-sm transition-all duration-200 ${errors.fromLocation ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-blue-500'}`}
+                      />
+                      {errors.fromLocation && <p className="text-xs text-red-500 mt-1 animate-in fade-in">{errors.fromLocation}</p>}
+                    </div>
+
+                    {/* Dynamic Stops */}
+                    <AnimatePresence>
+                      {formData.stops.map((stop, index) => (
+                        <motion.div 
+                          key={index} 
+                          initial={{ opacity: 0, height: 0, scale: 0.9 }} 
+                          animate={{ opacity: 1, height: 'auto', scale: 1 }} 
+                          exit={{ opacity: 0, height: 0, scale: 0.9 }} 
+                          transition={{ duration: 0.2 }}
+                          className="relative z-10 overflow-hidden pt-2"
+                        >
+                          <div className="absolute -left-[32.5px] top-5 w-4 h-4 rounded-full bg-orange-400 border-[3px] border-white shadow-md"></div>
+                          <label className="text-xs font-bold text-gray-600 uppercase mb-1 block text-orange-600">Stop {index + 1} (Midpoint)</label>
+                          <div className="flex gap-2 items-center">
+                            <Input 
+                              placeholder="e.g., Vijayawada"
+                              value={stop}
+                              onChange={(e) => handleStopChange(index, e.target.value)}
+                              className="bg-white border-gray-200 shadow-sm focus-visible:ring-orange-500"
+                            />
+                            <Button 
+                              type="button" 
+                              variant="ghost" 
+                              size="icon" 
+                              onClick={() => removeStop(index)}
+                              className="text-red-400 hover:text-red-600 hover:bg-red-50 flex-shrink-0"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </motion.div>
+                      ))}
+                    </AnimatePresence>
+
+                    {/* Add Stop Button */}
+                    <div className="relative z-10 pt-2">
+                      <div className="absolute -left-[30px] top-3 w-3 h-3 rounded-full bg-gray-200 border-2 border-white"></div>
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={addStop}
+                        className="text-xs font-bold text-primary border-primary/20 hover:bg-primary/5 border-dashed"
+                      >
+                        <Plus className="w-3 h-3 mr-1" /> Add Route Stop
+                      </Button>
+                    </div>
+
+                    {/* To Location */}
+                    <div className="relative z-10 pt-2">
+                      <div className="absolute -left-[32.5px] top-5 w-4 h-4 rounded-full bg-green-500 border-[3px] border-white shadow-md"></div>
+                      <label className="text-xs font-bold text-gray-600 uppercase mb-1 block">To Location <span className="text-red-500">*</span></label>
+                      <Input 
+                        placeholder="e.g., Chennai"
+                        name="toLocation"
+                        value={formData.toLocation}
+                        onChange={handleChange}
+                        className={`bg-white border-gray-200 shadow-sm transition-all duration-200 ${errors.toLocation ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
+                      />
+                      {errors.toLocation && <p className="text-xs text-red-500 mt-1 animate-in fade-in">{errors.toLocation}</p>}
+                    </div>
+                  </div>
+
+                  {/* Live Route Summary Preview */}
+                  <div className="mt-6 p-4 bg-gray-50/80 rounded-xl border border-gray-100">
+                    <p className="text-xs font-bold text-gray-500 uppercase mb-3">Live Route Preview</p>
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-gray-700">
+                      {routeArray.map((loc, idx) => (
+                        <React.Fragment key={idx}>
+                          <span className={idx === 0 ? 'text-blue-600' : idx === routeArray.length - 1 ? 'text-green-600' : 'text-orange-600'}>
+                            {loc}
+                          </span>
+                          {idx < routeArray.length - 1 && <ArrowRight className="w-3 h-3 text-gray-400" />}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                    {errors.route && <p className="text-xs text-red-500 mt-2 font-medium">{errors.route}</p>}
+                  </div>
                 </div>
 
-                {/* Dispatch Date */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    Dispatch Date <span className="text-red-500">*</span>
-                  </label>
-                  <Input 
-                    type="date"
-                    name="dispatchDate"
-                    value={formData.dispatchDate}
-                    onChange={handleChange}
-                    className={`transition-all duration-200 ${errors.dispatchDate ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
-                  />
-                  {errors.dispatchDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.dispatchDate}</p>}
-                </div>
+                {/* Right Column: Cargo Details */}
+                <div className="space-y-6">
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b pb-2">Cargo & Bid Details</h3>
+                  
+                  <div className="space-y-5">
+                    {/* Bid ID */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase">Bid ID</label>
+                      <Input 
+                        name="bidId"
+                        value={formData.bidId}
+                        disabled
+                        className="bg-gray-50 font-mono text-gray-500 border-gray-200 shadow-none"
+                      />
+                    </div>
 
-                {/* From Location */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    From Location <span className="text-red-500">*</span>
-                  </label>
-                  <Input 
-                    placeholder="e.g., Hyderabad"
-                    name="fromLocation"
-                    value={formData.fromLocation}
-                    onChange={handleChange}
-                    className={`transition-all duration-200 ${errors.fromLocation ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
-                  />
-                  {errors.fromLocation && <p className="text-xs text-red-500 animate-in fade-in">{errors.fromLocation}</p>}
-                </div>
+                    {/* Dispatch Date */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                        Dispatch Date <span className="text-red-500">*</span>
+                      </label>
+                      <Input 
+                        type="date"
+                        name="dispatchDate"
+                        value={formData.dispatchDate}
+                        onChange={handleChange}
+                        className={`bg-white border-gray-200 shadow-sm ${errors.dispatchDate ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                      />
+                      {errors.dispatchDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.dispatchDate}</p>}
+                    </div>
 
-                {/* To Location */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <MapPin className="w-4 h-4 text-gray-400" />
-                    To Location <span className="text-red-500">*</span>
-                  </label>
-                  <Input 
-                    placeholder="e.g., Vijayawada"
-                    name="toLocation"
-                    value={formData.toLocation}
-                    onChange={handleChange}
-                    className={`transition-all duration-200 ${errors.toLocation ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
-                  />
-                  {errors.toLocation && <p className="text-xs text-red-500 animate-in fade-in">{errors.toLocation}</p>}
-                </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Number of Tonnes */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                          <Weight className="w-3.5 h-3.5 text-gray-400" />
+                          Tonnes <span className="text-red-500">*</span>
+                        </label>
+                        <Input 
+                          type="number"
+                          placeholder="e.g., 20"
+                          name="tonnes"
+                          value={formData.tonnes}
+                          onChange={handleChange}
+                          min="0"
+                          step="0.01"
+                          className={`bg-white border-gray-200 shadow-sm ${errors.tonnes ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                        />
+                        {errors.tonnes && <p className="text-xs text-red-500 animate-in fade-in">{errors.tonnes}</p>}
+                      </div>
 
-                {/* Number of Tonnes */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <Weight className="w-4 h-4 text-gray-400" />
-                    Number of Tonnes <span className="text-red-500">*</span>
-                  </label>
-                  <Input 
-                    type="number"
-                    placeholder="e.g., 20"
-                    name="tonnes"
-                    value={formData.tonnes}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    className={`transition-all duration-200 ${errors.tonnes ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
-                  />
-                  {errors.tonnes && <p className="text-xs text-red-500 animate-in fade-in">{errors.tonnes}</p>}
-                </div>
+                      {/* Cost Per Tonne */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                          <CircleDollarSign className="w-3.5 h-3.5 text-gray-400" />
+                          Rate / Tonne <span className="text-red-500">*</span>
+                        </label>
+                        <Input 
+                          type="number"
+                          placeholder="e.g., 2100"
+                          name="costPerTonne"
+                          value={formData.costPerTonne}
+                          onChange={handleChange}
+                          min="0"
+                          step="0.01"
+                          className={`bg-white border-gray-200 shadow-sm ${errors.costPerTonne ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                        />
+                        {errors.costPerTonne && <p className="text-xs text-red-500 animate-in fade-in">{errors.costPerTonne}</p>}
+                      </div>
+                    </div>
 
-                {/* Cost Per Tonne */}
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <CircleDollarSign className="w-4 h-4 text-gray-400" />
-                    Cost Per Tonne (₹) <span className="text-red-500">*</span>
-                  </label>
-                  <Input 
-                    type="number"
-                    placeholder="e.g., 2100"
-                    name="costPerTonne"
-                    value={formData.costPerTonne}
-                    onChange={handleChange}
-                    min="0"
-                    step="0.01"
-                    className={`transition-all duration-200 ${errors.costPerTonne ? 'border-red-500 focus-visible:ring-red-500' : 'focus-visible:ring-green-500'}`}
-                  />
-                  {errors.costPerTonne && <p className="text-xs text-red-500 animate-in fade-in">{errors.costPerTonne}</p>}
-                </div>
+                    {/* Total Bid Amount Highlight */}
+                    <div className="mt-6 bg-primary/5 rounded-xl p-5 border border-primary/10 flex flex-col justify-between gap-2">
+                      <div>
+                        <h3 className="text-sm font-bold text-primary uppercase">Estimated Freight Value</h3>
+                        <p className="text-xs text-primary/70 mt-0.5">Calculated: Tonnes × Rate</p>
+                      </div>
+                      <div className="text-3xl font-bold text-primary font-mono tracking-tight mt-2">
+                        ₹ {bidAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      </div>
+                    </div>
+                  </div>
 
-              </div>
-
-              {/* Bid Amount Highlight */}
-              <div className="mt-8 bg-green-50/50 rounded-xl p-6 border border-green-100 flex flex-col md:flex-row items-center justify-between gap-4">
-                <div>
-                  <h3 className="text-sm font-medium text-green-800">Total Bid Amount</h3>
-                  <p className="text-xs text-green-600/80 mt-1">Auto-calculated based on tonnes and cost</p>
-                </div>
-                <div className="text-3xl font-bold text-green-700 font-mono tracking-tight">
-                  ₹ {bidAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                 </div>
               </div>
 
               {/* Actions */}
-              <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-100 mt-8">
+              <div className="flex flex-col sm:flex-row gap-4 pt-6 border-t border-gray-100 mt-10">
                 <Button 
                   type="submit" 
                   disabled={isLoading}
-                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-medium px-8 py-2.5 h-auto transition-all shadow-md hover:shadow-lg active:scale-[0.98]"
+                  className="w-full sm:w-auto bg-green-600 hover:bg-green-700 text-white font-bold uppercase tracking-wider px-10 py-6 h-auto transition-all shadow-md active:scale-95"
                 >
                   {isLoading ? (
                     <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Creating Load...
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Publishing...
                     </>
                   ) : (
                     <>
-                      <Send className="w-4 h-4 mr-2" />
-                      Submit Load
+                      <Send className="w-5 h-5 mr-2" />
+                      Publish Load
                     </>
                   )}
                 </Button>
@@ -257,9 +374,9 @@ export default function CreateLoadPage() {
                   variant="outline" 
                   onClick={handleReset}
                   disabled={isLoading}
-                  className="w-full sm:w-auto font-medium px-8 py-2.5 h-auto border-gray-200 hover:bg-gray-50 text-gray-600 transition-all active:scale-[0.98]"
+                  className="w-full sm:w-auto font-bold uppercase tracking-wider px-8 py-6 h-auto border-gray-200 hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
                 >
-                  <RotateCcw className="w-4 h-4 mr-2" />
+                  <RotateCcw className="w-5 h-5 mr-2" />
                   Reset Form
                 </Button>
               </div>
