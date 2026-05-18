@@ -17,8 +17,7 @@ const App = () => {
           <Route index element={<DashboardHome />} />
           <Route path="loads" element={<ManageLoads />} />
           <Route path="create-load" element={<CreateLoadPage />} />
-          <Route path="bids" element={<ManageLoads />} />
-          <Route path="bids/analytics" element={<Reports />} />
+
           <Route path="trips" element={<Trips />} />
           <Route path="trips/track" element={<Trips />} />
           <Route path="pod" element={<PODVerification />} />

@@ -22,11 +22,9 @@ const menuItems = [
   { group: "DASHBOARD", items: [
     { name: "Overview", icon: LayoutDashboard, path: "/" }
   ]},
-  { group: "LOADS & BIDS", items: [
+  { group: "LOADS", items: [
     { name: "Create Load", icon: MapPin, path: "/create-load" },
-    { name: "Manage Loads", icon: ClipboardList, path: "/loads" },
-    { name: "All Bids", icon: TrendingUp, path: "/bids" },
-    { name: "Bid Analytics", icon: BarChart3, path: "/bids/analytics" }
+    { name: "Manage Loads", icon: ClipboardList, path: "/loads" }
   ]},
   { group: "TRIPS", items: [
     { name: "All Trips", icon: Truck, path: "/trips" },
