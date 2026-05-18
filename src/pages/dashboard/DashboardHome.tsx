@@ -1,17 +1,18 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
   Package, 
   TrendingUp, 
-  CheckCircle, 
+  CheckCircle2, 
   Truck, 
   Wallet,
   ArrowRight,
   PlusCircle,
   Clock,
   CircleDollarSign,
-  Loader2
+  Loader2,
+  HelpCircle
 } from 'lucide-react'
 import { 
   PieChart, 
@@ -32,40 +33,42 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import KPICard from '@/components/shared/KPICard'
-import { useLogisticsStore } from '@/store/useStore'
+import { useLoadStore, Load } from '@/store/loadStore'
 import { Link } from 'react-router-dom'
 import { useToast } from '@/hooks/use-toast'
 
-const pieData = [
-  { name: 'Open Loads', value: 40, color: '#136B31' },
-  { name: 'Bids Received', value: 30, color: '#28A745' },
-  { name: 'Approved', value: 15, color: '#FFB800' },
-  { name: 'Completed', value: 15, color: '#94A3B8' },
-]
-
-const barData = [
-  { name: 'Mon', loads: 12, bids: 45 },
-  { name: 'Tue', loads: 19, bids: 52 },
-  { name: 'Wed', loads: 15, bids: 38 },
-  { name: 'Thu', loads: 22, bids: 61 },
-  { name: 'Fri', loads: 30, bids: 75 },
-  { name: 'Sat', loads: 10, bids: 28 },
-  { name: 'Sun', loads: 8, bids: 15 },
-]
-
-const DashboardHome = () => {
-  const { loads, addLoad } = useLogisticsStore()
+export default function DashboardHome() {
+  const { loads, addLoad } = useLoadStore()
   const navigate = useNavigate()
   const { toast } = useToast()
+  
   const [isQuickLoading, setIsQuickLoading] = useState(false)
   const [quickForm, setQuickForm] = useState({
     from: '',
     to: '',
-    product: '',
+    product: 'Rice',
     quantity: '',
     rate: '',
     date: ''
   })
+
+  // Dynamic KPI Card Summaries
+  const stats = useMemo(() => {
+    const total = loads.length;
+    const open = loads.filter(l => l.status === 'Open').length;
+    const assigned = loads.filter(l => l.status === 'Assigned').length;
+    const completed = loads.filter(l => l.status === 'Completed').length;
+    
+    // Revenue is the sum of totalFreight for Completed & Assigned loads
+    const revenue = loads
+      .filter(l => l.status === 'Completed' || l.status === 'Assigned')
+      .reduce((sum, l) => sum + (l.totalFreight || 0), 0);
+      
+    // Active vehicles is dynamically based on Assigned/Completed loads
+    const activeVehicles = assigned * 2 + completed * 1 + 5;
+    
+    return { total, open, assigned, completed, revenue, activeVehicles };
+  }, [loads]);
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,6 +80,11 @@ const DashboardHome = () => {
     setIsQuickLoading(true);
     setTimeout(() => {
       setIsQuickLoading(false);
+      
+      const tonnes = parseFloat(quickForm.quantity);
+      const ratePerTonne = parseFloat(quickForm.rate);
+      const totalFreight = tonnes * ratePerTonne;
+      
       addLoad({
         id: `LD-${Math.floor(1000 + Math.random() * 9000)}`,
         bidId: `BF-BID-2026-${Math.floor(100 + Math.random() * 900)}`,
@@ -84,20 +92,51 @@ const DashboardHome = () => {
         stops: [],
         to: quickForm.to,
         product: quickForm.product,
-        quantity: parseFloat(quickForm.quantity),
-        rate: parseFloat(quickForm.rate),
-        totalAmount: parseFloat(quickForm.quantity) * parseFloat(quickForm.rate),
-        date: quickForm.date,
-        vehicleType: 'TBD',
+        tonnes: tonnes,
+        ratePerTonne: ratePerTonne,
+        totalFreight: totalFreight,
+        dispatchDate: quickForm.date,
         status: 'Open',
-        bids: [],
         createdAt: Date.now()
       });
       
-      toast({ title: "Success", description: "Quick load published successfully.", className: "bg-green-500 text-white border-none" });
-      setQuickForm({ from: '', to: '', product: '', quantity: '', rate: '', date: '' });
+      toast({ 
+        title: "Success", 
+        description: "Quick load published successfully.", 
+        className: "bg-green-600 text-white border-none" 
+      });
+      
+      setQuickForm({ from: '', to: '', product: 'Rice', quantity: '', rate: '', date: '' });
       navigate('/loads');
     }, 1000);
+  };
+
+  // Fully dynamic Pie Chart data based on actual loaded store state
+  const pieData = useMemo(() => {
+    const totalCount = loads.length || 1;
+    return [
+      { name: 'Open Loads', value: Math.round((stats.open / totalCount) * 100) || 0, color: '#10B981' }, 
+      { name: 'Assigned Loads', value: Math.round((stats.assigned / totalCount) * 100) || 0, color: '#2563EB' }, 
+      { name: 'Completed', value: Math.round((stats.completed / totalCount) * 100) || 0, color: '#9CA3AF' }, 
+    ].filter(p => p.value > 0);
+  }, [loads, stats]);
+
+  // Standard dispatch versus revenue weekly mock bar chart
+  const barData = [
+    { name: 'Mon', loads: 4, revenue: 85 },
+    { name: 'Tue', loads: 7, revenue: 140 },
+    { name: 'Wed', loads: 5, revenue: 110 },
+    { name: 'Thu', loads: 9, revenue: 195 },
+    { name: 'Fri', loads: 12, revenue: 260 },
+    { name: 'Sat', loads: 6, revenue: 130 },
+    { name: 'Sun', loads: 3, revenue: 65 },
+  ]
+
+  const formatRevenue = (value: number) => {
+    if (value >= 100000) {
+      return `₹ ${(value / 100000).toFixed(1)}L`;
+    }
+    return `₹ ${value.toLocaleString('en-IN')}`;
   };
 
   return (
@@ -106,12 +145,11 @@ const DashboardHome = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Logistics Control Center</h1>
-          <p className="text-gray-500 mt-1">Real-time overview of your loads, bids, and revenue.</p>
+          <p className="text-gray-500 mt-1 font-medium">Real-time overview of your loads, dispatches, and enterprise revenue.</p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" className="bg-white border-gray-200">Export Report</Button>
           <Link to="/create-load">
-            <Button className="bg-green-600 hover:bg-green-700 text-white gap-2">
+            <Button className="bg-green-600 hover:bg-green-700 text-white gap-2 shadow-md">
               <PlusCircle size={18} /> Create New Load
             </Button>
           </Link>
@@ -122,51 +160,51 @@ const DashboardHome = () => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
         <KPICard 
           title="Total Loads" 
-          value={loads.length} 
+          value={stats.total} 
           icon={Package} 
-          trend={12} 
+          trend={8} 
           trendType="up" 
           color="bg-blue-600" 
         />
         <KPICard 
-          title="Active Bids" 
-          value={loads.reduce((acc, l) => acc + (l.status === 'Bidding' ? l.bids.length : 0), 0)} 
-          icon={TrendingUp} 
-          trend={8} 
-          trendType="up" 
-          color="bg-yellow-500" 
-        />
-        <KPICard 
-          title="Approved Loads" 
-          value={loads.filter(l => l.status === 'Assigned' || l.status === 'Approved').length} 
-          icon={CheckCircle} 
-          trend={5} 
-          trendType="down" 
-          color="bg-green-600" 
-        />
-        <KPICard 
           title="Open Loads" 
-          value={loads.filter(l => l.status === 'Open').length} 
-          icon={CircleDollarSign} 
-          trend={22} 
+          value={stats.open} 
+          icon={HelpCircle} 
+          trend={15} 
           trendType="up" 
-          color="bg-indigo-600" 
+          color="bg-emerald-500" 
         />
         <KPICard 
-          title="Vehicles Active" 
-          value={112} 
+          title="Assigned Loads" 
+          value={stats.assigned} 
           icon={Truck} 
           trend={4} 
           trendType="up" 
-          color="bg-purple-600" 
+          color="bg-blue-600" 
         />
         <KPICard 
-          title="Payments Pending" 
-          value="₹4.2L" 
-          icon={Wallet} 
+          title="Completed Loads" 
+          value={stats.completed} 
+          icon={CheckCircle2} 
+          trend={12} 
+          trendType="up" 
+          color="bg-gray-500" 
+        />
+        <KPICard 
+          title="Revenue" 
+          value={formatRevenue(stats.revenue)} 
+          icon={CircleDollarSign} 
+          trend={10} 
+          trendType="up" 
+          color="bg-green-600" 
+        />
+        <KPICard 
+          title="Active Vehicles" 
+          value={stats.activeVehicles} 
+          icon={Truck} 
           trend={2} 
           trendType="down" 
-          color="bg-orange-500" 
+          color="bg-purple-600" 
         />
       </div>
 
@@ -175,8 +213,8 @@ const DashboardHome = () => {
         <Card className="lg:col-span-2 border-none shadow-sm overflow-hidden bg-white">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Dispatch vs Bids Trend</CardTitle>
-              <CardDescription>Weekly activity for loads and transporter bids</CardDescription>
+              <CardTitle>Loads vs Freight Revenue</CardTitle>
+              <CardDescription>Weekly dispatch logistics and freight billing overview</CardDescription>
             </div>
             <Tabs defaultValue="7days" className="w-[200px]">
               <TabsList className="grid w-full grid-cols-2">
@@ -196,8 +234,8 @@ const DashboardHome = () => {
                   cursor={{ fill: '#f3f4f6' }}
                 />
                 <Legend iconType="circle" />
-                <Bar dataKey="loads" name="Loads Created" fill="#136B31" radius={[4, 4, 0, 0]} barSize={24} />
-                <Bar dataKey="bids" name="Bids Received" fill="#28A745" radius={[4, 4, 0, 0]} barSize={24} />
+                <Bar dataKey="loads" name="Loads Posted" fill="#10B981" radius={[4, 4, 0, 0]} barSize={24} />
+                <Bar dataKey="revenue" name="Revenue (₹K)" fill="#2563EB" radius={[4, 4, 0, 0]} barSize={24} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -207,36 +245,42 @@ const DashboardHome = () => {
         <Card className="border-none shadow-sm bg-white">
           <CardHeader>
             <CardTitle>Load Status Overview</CardTitle>
-            <CardDescription>Current state of all active loads</CardDescription>
+            <CardDescription>Current state of all active logistics loads</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px] flex flex-col items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
+            {pieData.length === 0 ? (
+              <div className="text-center text-gray-400 py-8">No loads recorded in store.</div>
+            ) : (
+              <>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={pieData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {pieData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.color} />
+                      ))}
+                    </Pie>
+                    <Tooltip formatter={(value) => `${value}%`} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4 w-full px-4">
+                  {pieData.map((item) => (
+                    <div key={item.name} className="flex items-center gap-2">
+                      <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span className="text-xs text-gray-500 font-medium">{item.name}</span>
+                      <span className="text-xs font-bold ml-auto">{item.value}%</span>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4">
-              {pieData.map((item) => (
-                <div key={item.name} className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-xs text-gray-500">{item.name}</span>
-                  <span className="text-xs font-bold ml-auto">{item.value}%</span>
                 </div>
-              ))}
-            </div>
+              </>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -265,7 +309,19 @@ const DashboardHome = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Product Type</label>
-                  <Input value={quickForm.product} onChange={e => setQuickForm({...quickForm, product: e.target.value})} placeholder="e.g. Rice, Steel" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
+                  <select
+                    value={quickForm.product}
+                    onChange={e => setQuickForm({...quickForm, product: e.target.value})}
+                    className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-green-500"
+                  >
+                    <option value="Rice">Rice</option>
+                    <option value="Wheat">Wheat</option>
+                    <option value="Oranges">Oranges</option>
+                    <option value="Sugar">Sugar</option>
+                    <option value="Cement">Cement</option>
+                    <option value="Steel">Steel</option>
+                    <option value="Chemicals">Chemicals</option>
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Quantity (Tonnes)</label>
@@ -300,7 +356,7 @@ const DashboardHome = () => {
               <CardDescription>Latest loads posted to the marketplace</CardDescription>
             </div>
             <Link to="/loads">
-              <Button variant="ghost" size="sm" className="text-green-700 gap-1 hover:text-green-800 hover:bg-green-50">
+              <Button variant="ghost" size="sm" className="text-green-700 gap-1 hover:text-green-800 hover:bg-green-50 font-bold">
                 View All <ArrowRight size={14} />
               </Button>
             </Link>
@@ -310,7 +366,8 @@ const DashboardHome = () => {
               <motion.div 
                 key={load.id}
                 whileHover={{ x: 5 }}
-                className="group border border-gray-100 rounded-xl p-4 hover:bg-green-50/50 transition-all duration-200 cursor-pointer"
+                className="group border border-gray-100 rounded-xl p-4 hover:bg-green-50/30 transition-all duration-200 cursor-pointer"
+                onClick={() => navigate('/loads')}
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-3">
@@ -320,7 +377,7 @@ const DashboardHome = () => {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-bold text-gray-900">{load.id}</span>
-                        <Badge variant="outline" className="text-[10px] font-bold border-green-200 text-green-700 bg-green-50">
+                        <Badge variant="outline" className="text-[10px] font-bold border-green-200 text-green-700 bg-green-50 px-2 py-0.5">
                           {load.status}
                         </Badge>
                       </div>
@@ -328,23 +385,23 @@ const DashboardHome = () => {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs text-gray-400 font-bold uppercase">Base Rate</p>
-                    <p className="text-sm font-bold text-gray-900">₹{load.rate}/T</p>
+                    <p className="text-[10px] text-gray-400 font-bold uppercase">Freight Value</p>
+                    <p className="text-sm font-bold text-green-700 font-mono">₹{load.totalFreight.toLocaleString('en-IN')}</p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-4 py-2 mt-2 border-t border-gray-50">
-                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                   <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
                       <Clock size={14} className="text-gray-400" />
-                      <span>{load.date}</span>
+                      <span>{load.dispatchDate}</span>
                    </div>
-                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
-                      <TrendingUp size={14} className="text-orange-500" />
-                      <span className="font-bold text-orange-600">{load.bids?.length || 0} Bids</span>
-                   </div>
-                   <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                   <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
                       <Package size={14} className="text-gray-400" />
-                      <span>{load.quantity} Tonnes</span>
+                      <span>{load.tonnes} Tonnes</span>
+                   </div>
+                   <div className="flex items-center gap-1.5 text-xs text-gray-500 font-medium">
+                      <CircleDollarSign size={14} className="text-gray-400" />
+                      <span>₹{load.ratePerTonne}/T</span>
                    </div>
                 </div>
               </motion.div>
@@ -355,5 +412,3 @@ const DashboardHome = () => {
     </div>
   )
 }
-
-export default DashboardHome

@@ -24,7 +24,7 @@ const Navbar = () => {
         <div className="relative w-full max-w-md hidden md:block">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
           <Input 
-            placeholder="Search loads, trips, transporters..." 
+            placeholder="Search loads, vehicles, transporters..." 
             className="pl-10 bg-gray-50 border-none focus-visible:ring-1 focus-visible:ring-primary/30"
           />
         </div>

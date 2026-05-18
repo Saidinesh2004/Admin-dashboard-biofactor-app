@@ -7,14 +7,14 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Loader2, ArrowLeft, Send, RotateCcw, Calendar, 
-  Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route
+  Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route, Package
 } from 'lucide-react';
-import { useLogisticsStore } from '@/store/useStore';
+import { useLoadStore } from '@/store/loadStore';
 
 export default function CreateLoadPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const addLoad = useLogisticsStore(state => state.addLoad);
+  const addLoad = useLoadStore(state => state.addLoad);
   
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState({
@@ -24,7 +24,8 @@ export default function CreateLoadPage() {
     toLocation: '',
     dispatchDate: '',
     tonnes: '',
-    costPerTonne: ''
+    costPerTonne: '',
+    product: 'Rice'
   });
   
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -35,12 +36,12 @@ export default function CreateLoadPage() {
     setFormData(prev => ({ ...prev, bidId: `BF-BID-2026-${randomNum}` }));
   }, []);
 
-  const bidAmount = 
+  const totalFreight = 
     (parseFloat(formData.tonnes) || 0) * (parseFloat(formData.costPerTonne) || 0);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name as keyof typeof formData]: value }));
+    setFormData(prev => ({ ...prev, [name]: value }));
     if (errors[name]) {
       setErrors(prev => ({ ...prev, [name]: '' }));
     }
@@ -77,8 +78,12 @@ export default function CreateLoadPage() {
     if (!formData.tonnes || parseFloat(formData.tonnes) <= 0) newErrors.tonnes = 'Enter a valid number of tonnes';
     if (!formData.costPerTonne || parseFloat(formData.costPerTonne) <= 0) newErrors.costPerTonne = 'Enter a valid cost per tonne';
     
-    // Check for duplicate stops including from/to
-    const allLocations = [formData.fromLocation.trim().toLowerCase(), ...formData.stops.map(s => s.trim().toLowerCase()), formData.toLocation.trim().toLowerCase()].filter(Boolean);
+    // Check for duplicate locations including from/to
+    const allLocations = [
+      formData.fromLocation.trim().toLowerCase(), 
+      ...formData.stops.map(s => s.trim().toLowerCase()), 
+      formData.toLocation.trim().toLowerCase()
+    ].filter(Boolean);
     const uniqueLocations = new Set(allLocations);
     if (uniqueLocations.size !== allLocations.length) {
       newErrors.route = 'Duplicate locations are not allowed in the route.';
@@ -108,14 +113,12 @@ export default function CreateLoadPage() {
         from: formData.fromLocation,
         stops: validStops,
         to: formData.toLocation,
-        product: 'General Cargo', // Default or add field
-        quantity: parseFloat(formData.tonnes),
-        rate: parseFloat(formData.costPerTonne),
-        totalAmount: bidAmount,
-        date: formData.dispatchDate,
-        vehicleType: 'TBD',
+        product: formData.product,
+        tonnes: parseFloat(formData.tonnes),
+        ratePerTonne: parseFloat(formData.costPerTonne),
+        totalFreight: totalFreight,
+        dispatchDate: formData.dispatchDate,
         status: 'Open' as const,
-        bids: [],
         createdAt: Date.now()
       };
       
@@ -125,7 +128,7 @@ export default function CreateLoadPage() {
         title: "Success",
         description: "Load published successfully.",
         variant: "default",
-        className: "bg-green-500 text-white border-none",
+        className: "bg-green-600 text-white border-none",
       });
       
       navigate('/loads');
@@ -141,7 +144,8 @@ export default function CreateLoadPage() {
       toLocation: '',
       dispatchDate: '',
       tonnes: '',
-      costPerTonne: ''
+      costPerTonne: '',
+      product: 'Rice'
     });
     setErrors({});
   };
@@ -162,7 +166,7 @@ export default function CreateLoadPage() {
         </Button>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-gray-900">Create New Load</h1>
-          <p className="text-sm text-gray-500">Create and publish a new transportation bid with dynamic routing.</p>
+          <p className="text-sm text-gray-500 font-medium">Create and publish a new transportation bid with dynamic routing.</p>
         </div>
       </div>
 
@@ -174,10 +178,10 @@ export default function CreateLoadPage() {
         <Card className="border-0 shadow-lg bg-white overflow-hidden rounded-2xl">
           <CardHeader className="bg-gray-50/50 border-b border-gray-100 pb-6">
             <CardTitle className="text-lg font-semibold text-gray-800 flex items-center gap-2">
-              <Route className="w-5 h-5 text-primary" />
-              Route & Bid Configuration
+              <Route className="w-5 h-5 text-green-600" />
+              Route & Cargo Configuration
             </CardTitle>
-            <CardDescription>Plan your logistics route and define bid parameters.</CardDescription>
+            <CardDescription>Plan your logistics route and define load parameters.</CardDescription>
           </CardHeader>
           <CardContent className="p-6 md:p-8">
             <form onSubmit={handleSubmit} className="space-y-10">
@@ -248,7 +252,7 @@ export default function CreateLoadPage() {
                         variant="outline" 
                         size="sm" 
                         onClick={addStop}
-                        className="text-xs font-bold text-primary border-primary/20 hover:bg-primary/5 border-dashed"
+                        className="text-xs font-bold text-green-700 border-green-600/20 hover:bg-green-50/50 border-dashed"
                       >
                         <Plus className="w-3 h-3 mr-1" /> Add Route Stop
                       </Button>
@@ -288,7 +292,7 @@ export default function CreateLoadPage() {
 
                 {/* Right Column: Cargo Details */}
                 <div className="space-y-6">
-                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b pb-2">Cargo & Bid Details</h3>
+                  <h3 className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-4 border-b pb-2">Cargo & Pricing Details</h3>
                   
                   <div className="space-y-5">
                     {/* Bid ID */}
@@ -302,6 +306,28 @@ export default function CreateLoadPage() {
                       />
                     </div>
 
+                    {/* Product Selection */}
+                    <div className="space-y-1.5">
+                      <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                        <Package className="w-3.5 h-3.5 text-gray-400" />
+                        Product <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        name="product"
+                        value={formData.product}
+                        onChange={handleChange}
+                        className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
+                      >
+                        <option value="Rice">Rice</option>
+                        <option value="Wheat">Wheat</option>
+                        <option value="Oranges">Oranges</option>
+                        <option value="Sugar">Sugar</option>
+                        <option value="Cement">Cement</option>
+                        <option value="Steel">Steel</option>
+                        <option value="Chemicals">Chemicals</option>
+                      </select>
+                    </div>
+
                     {/* Dispatch Date */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
@@ -313,7 +339,7 @@ export default function CreateLoadPage() {
                         name="dispatchDate"
                         value={formData.dispatchDate}
                         onChange={handleChange}
-                        className={`bg-white border-gray-200 shadow-sm ${errors.dispatchDate ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                        className={`bg-white border-gray-200 shadow-sm ${errors.dispatchDate ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
                       />
                       {errors.dispatchDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.dispatchDate}</p>}
                     </div>
@@ -333,7 +359,7 @@ export default function CreateLoadPage() {
                           onChange={handleChange}
                           min="0"
                           step="0.01"
-                          className={`bg-white border-gray-200 shadow-sm ${errors.tonnes ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                          className={`bg-white border-gray-200 shadow-sm ${errors.tonnes ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
                         />
                         {errors.tonnes && <p className="text-xs text-red-500 animate-in fade-in">{errors.tonnes}</p>}
                       </div>
@@ -352,20 +378,20 @@ export default function CreateLoadPage() {
                           onChange={handleChange}
                           min="0"
                           step="0.01"
-                          className={`bg-white border-gray-200 shadow-sm ${errors.costPerTonne ? 'border-red-500' : 'focus-visible:ring-primary'}`}
+                          className={`bg-white border-gray-200 shadow-sm ${errors.costPerTonne ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
                         />
                         {errors.costPerTonne && <p className="text-xs text-red-500 animate-in fade-in">{errors.costPerTonne}</p>}
                       </div>
                     </div>
 
-                    {/* Total Bid Amount Highlight */}
-                    <div className="mt-6 bg-primary/5 rounded-xl p-5 border border-primary/10 flex flex-col justify-between gap-2">
+                    {/* Total Freight Value Highlight */}
+                    <div className="mt-6 bg-green-50 rounded-xl p-5 border border-green-100 flex flex-col justify-between gap-2">
                       <div>
-                        <h3 className="text-sm font-bold text-primary uppercase">Estimated Freight Value</h3>
-                        <p className="text-xs text-primary/70 mt-0.5">Calculated: Tonnes × Rate</p>
+                        <h3 className="text-sm font-bold text-green-800 uppercase">Estimated Freight Value</h3>
+                        <p className="text-xs text-green-600/80 mt-0.5 font-medium">Calculated: Tonnes × Rate / Tonne</p>
                       </div>
-                      <div className="text-3xl font-bold text-primary font-mono tracking-tight mt-2">
-                        ₹ {bidAmount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+                      <div className="text-3xl font-bold text-green-700 font-mono tracking-tight mt-2">
+                        ₹ {totalFreight.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
                       </div>
                     </div>
                   </div>
