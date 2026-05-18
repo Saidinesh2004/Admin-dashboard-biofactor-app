@@ -3,6 +3,7 @@ import DashboardLayout from './layouts/DashboardLayout'
 import DashboardHome from './pages/dashboard/DashboardHome'
 import ManageLoads from './pages/loads/ManageLoads'
 import Transporters from './pages/transporters/Transporters'
+import BulkRegistrationPage from './pages/BulkRegistrationPage'
 
 import Reports from './pages/reports/Reports'
 import Payments from './pages/payments/Payments'
@@ -20,6 +21,7 @@ const App = () => {
           <Route path="payments" element={<Payments />} />
           
           <Route path="users" element={<Transporters />} />
+          <Route path="bulk-registrations" element={<BulkRegistrationPage />} />
           
           <Route path="reports" element={<Reports />} />
           <Route path="reports/loads" element={<Reports />} />

@@ -30,7 +30,8 @@ const menuItems = [
     { name: "Payments", icon: CreditCard, path: "/payments" }
   ]},
   { group: "USERS", items: [
-    { name: "Users", icon: Users, path: "/users" }
+    { name: "Users", icon: Users, path: "/users" },
+    { name: "Bulk Registrations", icon: FileText, path: "/bulk-registrations" }
   ]},
   { group: "REPORTS", items: [
     { name: "Business Reports", icon: BarChart3, path: "/reports" },
