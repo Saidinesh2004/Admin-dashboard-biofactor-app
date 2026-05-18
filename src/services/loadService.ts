@@ -1,3 +1,32 @@
+export type BidStatus = 'Pending' | 'Approved' | 'Rejected' | 'Negotiating' | 'Selected';
+
+export interface Transporter {
+  companyName: string;
+  ownerName: string;
+  fleetSize: number;
+  completedTrips: number;
+  insuranceValidity: string;
+  kycStatus: 'Verified' | 'Pending' | 'Failed';
+  rating: number;
+  experienceYears: number;
+  remarks?: string;
+}
+
+export interface Bid {
+  id: string;
+  rank: number;
+  transporterName: string;
+  vehicleType: string;
+  bidAmount: number;
+  pricePerTonne: number;
+  eta: string;
+  driverRating: number;
+  experienceYears: number;
+  verificationStatus: ('KYC Verified' | 'Insurance Valid' | 'Trusted Transporter' | 'New Bidder')[];
+  status: BidStatus;
+  transporterDetails: Transporter;
+}
+
 export interface Load {
   id: string;
   bidId: string;
@@ -11,6 +40,9 @@ export interface Load {
   dispatchDate: string;
   status: 'Open' | 'Assigned' | 'Completed';
   createdAt: number;
+  bids?: Bid[];
+  assignedTransporter?: Transporter;
+  tripId?: string;
 }
 
 const LOCAL_STORAGE_KEY = 'biofactor-loads-v2';

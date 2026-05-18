@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
   Search, Filter, Download, Plus, Eye, Edit, Trash2, ArrowRight,
   MapPin, Calendar, Weight, CircleDollarSign, Truck, CheckCircle2,
-  Clock, X, BarChart3, TrendingUp, HelpCircle
+  Clock, X, BarChart3, TrendingUp, HelpCircle, Star, ShieldCheck, 
+  Award, Sparkles, Activity, FileSpreadsheet, ChevronRight, AlertTriangle,
+  Coins, MessageSquare, Building2
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
@@ -13,23 +15,36 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
-import { useLoadStore, type Load } from '@/store/loadStore';
+import { useLoadStore, type Load, type Bid, type Transporter } from '@/store/loadStore';
 import { exportToExcel } from '@/utils/exportCsv';
 
 export default function ManageLoads() {
   const { toast } = useToast();
-  const { loads, addLoad, updateLoad, deleteLoad } = useLoadStore();
+  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, simulateNewBid } = useLoadStore();
   
-  // Filtering & Search
+  // Filtering & Search for Main Table
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
   
-  // Modals / Drawers State
-  const [selectedLoad, setSelectedLoad] = useState<Load | null>(null);
+  // Drawer / Modals State
+  const [selectedLoadId, setSelectedLoadId] = useState<string | null>(null);
   const [editingLoad, setEditingLoad] = useState<Load | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  // Edit Form State
+  // Active Bidding/Simulation States inside Drawer
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [bidSearch, setBidSearch] = useState('');
+  const [bidFilter, setBidFilter] = useState<'Cheapest' | 'Highest Rated' | 'Fastest ETA' | 'Verified Only'>('Cheapest');
+
+  // Nested Modals State inside Drawer
+  const [negotiatingBid, setNegotiatingBid] = useState<{ loadId: string; bid: Bid } | null>(null);
+  const [counterOffer, setCounterOffer] = useState('');
+  const [negotiationRemarks, setNegotiationRemarks] = useState('');
+  
+  const [rejectConfirmBid, setRejectConfirmBid] = useState<{ loadId: string; bidId: string; transporterName: string } | null>(null);
+  const [viewingTransporter, setViewingTransporter] = useState<Transporter | null>(null);
+
+  // Edit Load Form State
   const [editForm, setEditForm] = useState({
     from: '',
     stops: [] as string[],
@@ -41,7 +56,72 @@ export default function ManageLoads() {
     status: 'Open' as 'Open' | 'Assigned' | 'Completed'
   });
 
-  // Dynamic Search & Filter Logic
+  // Get the selected load dynamically from the store to ensure reactive updates
+  const selectedLoad = useMemo(() => {
+    return loads.find(l => l.id === selectedLoadId) || null;
+  }, [loads, selectedLoadId]);
+
+  // Live Bid Simulation Interval
+  useEffect(() => {
+    if (!isSimulating || !selectedLoadId) return;
+
+    const interval = setInterval(() => {
+      const currentLoad = useLoadStore.getState().loads.find(l => l.id === selectedLoadId);
+      if (currentLoad && currentLoad.status === 'Open') {
+        simulateNewBid(selectedLoadId);
+        
+        // Retrieve the newly updated cheapest bid for the toast alert
+        const updatedLoad = useLoadStore.getState().loads.find(l => l.id === selectedLoadId);
+        if (updatedLoad && updatedLoad.bids) {
+          const cheapest = updatedLoad.bids[0];
+          toast({
+            title: "Live Bid Received!",
+            description: `${cheapest.transporterName} submitted a competitive rate of ₹${cheapest.bidAmount.toLocaleString('en-IN')}`,
+            className: "bg-green-600 text-white border-none shadow-lg font-semibold animate-pulse"
+          });
+        }
+      } else {
+        setIsSimulating(false);
+      }
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [isSimulating, selectedLoadId]);
+
+  // Dynamic Search & Filter Logic for Bids inside Drawer
+  const filteredBids = useMemo(() => {
+    if (!selectedLoad || !selectedLoad.bids) return [];
+    
+    let list = [...selectedLoad.bids];
+    
+    // Search by Transporter Name or Vehicle Type
+    if (bidSearch.trim() !== '') {
+      const query = bidSearch.toLowerCase();
+      list = list.filter(b => 
+        b.transporterName.toLowerCase().includes(query) ||
+        b.vehicleType.toLowerCase().includes(query)
+      );
+    }
+    
+    // Sorting & Filters
+    if (bidFilter === 'Cheapest') {
+      list.sort((a, b) => a.bidAmount - b.bidAmount);
+    } else if (bidFilter === 'Highest Rated') {
+      list.sort((a, b) => b.driverRating - a.driverRating);
+    } else if (bidFilter === 'Fastest ETA') {
+      list.sort((a, b) => {
+        const valA = parseInt(a.eta) || 999;
+        const valB = parseInt(b.eta) || 999;
+        return valA - valB;
+      });
+    } else if (bidFilter === 'Verified Only') {
+      list = list.filter(b => b.verificationStatus.includes('Trusted Transporter') || b.verificationStatus.includes('KYC Verified'));
+    }
+    
+    return list;
+  }, [selectedLoad, bidSearch, bidFilter]);
+
+  // Dynamic Search & Filter Logic for Main Table
   const filteredLoads = useMemo(() => {
     return loads.filter(l => {
       const stopsMatch = l.stops ? l.stops.some(stop => stop.toLowerCase().includes(search.toLowerCase())) : false;
@@ -57,20 +137,16 @@ export default function ManageLoads() {
     });
   }, [loads, search, statusFilter]);
 
-  // Dynamic KPI Card Summaries
+  // KPI Calculations
   const stats = useMemo(() => {
     const total = loads.length;
     const open = loads.filter(l => l.status === 'Open').length;
     const assigned = loads.filter(l => l.status === 'Assigned').length;
     const completed = loads.filter(l => l.status === 'Completed').length;
-    
-    // Revenue is the sum of totalFreight for Completed & Assigned loads
     const revenue = loads
       .filter(l => l.status === 'Completed' || l.status === 'Assigned')
       .reduce((sum, l) => sum + (l.totalFreight || 0), 0);
-      
-    // Active vehicles is dynamically based on Assigned/Completed loads
-    const activeVehicles = assigned * 2 + completed * 1 + 5;
+    const activeVehicles = assigned;
     
     return { total, open, assigned, completed, revenue, activeVehicles };
   }, [loads]);
@@ -85,6 +161,20 @@ export default function ManageLoads() {
         return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-200 border-none px-3 py-1 font-semibold">Completed</Badge>;
       default: 
         return <Badge variant="outline" className="px-3 py-1 font-semibold">{status}</Badge>;
+    }
+  };
+
+  const getBidStatusBadge = (status: Bid['status']) => {
+    switch (status) {
+      case 'Approved':
+      case 'Selected':
+        return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold animate-pulse">Approved</Badge>;
+      case 'Rejected':
+        return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold">Rejected</Badge>;
+      case 'Negotiating':
+        return <Badge className="bg-amber-100 text-amber-800 border-none px-2 py-0.5 text-xs font-bold">Negotiating</Badge>;
+      default:
+        return <Badge className="bg-gray-100 text-gray-800 border-none px-2 py-0.5 text-xs font-bold">Pending</Badge>;
     }
   };
 
@@ -105,6 +195,28 @@ export default function ManageLoads() {
     toast({ 
       title: 'Export Successful', 
       description: 'Loads database has been downloaded as an Excel spreadsheet.',
+      className: "bg-green-600 text-white border-none"
+    });
+  };
+
+  const handleExportBidsComparison = (load: Load) => {
+    if (!load.bids) return;
+    const data = load.bids.map(b => ({
+      'Rank': b.rank,
+      'Transporter': b.transporterName,
+      'Vehicle Type': b.vehicleType,
+      'Bid Amount (INR)': b.bidAmount,
+      'Rate/Tonne': b.pricePerTonne,
+      'ETA': b.eta,
+      'Rating': b.driverRating,
+      'Experience (Years)': b.experienceYears,
+      'Verification Status': b.verificationStatus.join(', '),
+      'Bid Status': b.status
+    }));
+    exportToExcel(data, `Bid_Comparison_${load.id}.xls`);
+    toast({
+      title: "Comparison Exported",
+      description: "Transporter comparison sheet downloaded successfully.",
       className: "bg-green-600 text-white border-none"
     });
   };
@@ -165,6 +277,51 @@ export default function ManageLoads() {
     setEditForm(prev => ({ ...prev, stops: newStops }));
   };
 
+  // Bid Approval Workflow
+  const handleApproveBid = (loadId: string, bidId: string, transporterName: string) => {
+    approveBid(loadId, bidId);
+    toast({
+      title: "Transporter Assigned!",
+      description: `Bidding closed. ${transporterName} has been assigned to load ${loadId}.`,
+      className: "bg-green-600 text-white border-none shadow-xl"
+    });
+  };
+
+  // Bid Rejection Workflow
+  const handleRejectBid = () => {
+    if (!rejectConfirmBid) return;
+    rejectBid(rejectConfirmBid.loadId, rejectConfirmBid.bidId);
+    toast({
+      title: "Bid Rejected",
+      description: `Bid from ${rejectConfirmBid.transporterName} was rejected.`,
+      variant: "destructive"
+    });
+    setRejectConfirmBid(null);
+  };
+
+  // Negotiation Workflow
+  const handleNegotiateSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!negotiatingBid) return;
+    
+    const amount = parseFloat(counterOffer);
+    if (!amount || amount <= 0) {
+      toast({ title: "Validation Error", description: "Please enter a valid counter offer amount.", variant: "destructive" });
+      return;
+    }
+
+    negotiateBid(negotiatingBid.loadId, negotiatingBid.bid.id, amount, negotiationRemarks);
+    toast({
+      title: "Counter Offer Sent",
+      description: `Sent offer of ₹${amount.toLocaleString()} to ${negotiatingBid.bid.transporterName}.`,
+      className: "bg-amber-600 text-white border-none"
+    });
+
+    setNegotiatingBid(null);
+    setCounterOffer('');
+    setNegotiationRemarks('');
+  };
+
   const formatRevenue = (value: number) => {
     if (value >= 100000) {
       return `₹ ${(value / 100000).toFixed(1)} Lakhs`;
@@ -199,54 +356,56 @@ export default function ManageLoads() {
           { label: 'Open Loads', val: stats.open, color: 'border-l-emerald-500', icon: HelpCircle, bg: 'text-emerald-500' },
           { label: 'Assigned Loads', val: stats.assigned, color: 'border-l-blue-600', icon: Truck, bg: 'text-blue-600' },
           { label: 'Completed Loads', val: stats.completed, color: 'border-l-gray-400', icon: CheckCircle2, bg: 'text-gray-500' },
-          { label: 'Active Vehicles', val: stats.activeVehicles, color: 'border-l-purple-500', icon: Truck, bg: 'text-purple-500' },
-          { label: 'Total Revenue', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600' },
-        ].map((stat, i) => (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} key={i}>
-            <Card className={`border-l-4 ${stat.color} shadow-sm bg-white overflow-hidden hover:shadow-md transition-shadow`}>
-              <CardContent className="p-4 flex flex-col justify-between h-24">
-                <div className="flex justify-between items-start">
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">{stat.label}</p>
-                  <stat.icon size={16} className={`${stat.bg}`} />
-                </div>
-                <p className="text-xl font-bold mt-1 text-gray-900 tracking-tight">{stat.val}</p>
-              </CardContent>
-            </Card>
-          </motion.div>
+          { label: 'Total Revenue', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600 font-mono' },
+          { label: 'Active Vehicles', val: stats.activeVehicles, color: 'border-l-indigo-500', icon: Activity, bg: 'text-indigo-500' },
+        ].map((c, i) => (
+          <Card key={i} className={`border-0 border-l-4 ${c.color} shadow-sm bg-white overflow-hidden`}>
+            <CardContent className="p-4 flex justify-between items-center">
+              <div className="space-y-1">
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">{c.label}</p>
+                <h3 className={`text-base font-bold text-gray-800 ${c.bg}`}>{c.val}</h3>
+              </div>
+              <c.icon className={`w-5 h-5 opacity-30 ${c.bg}`} />
+            </CardContent>
+          </Card>
         ))}
       </div>
 
-      {/* Search & Filters */}
-      <Card className="border border-gray-100 shadow-sm bg-white rounded-xl">
-        <CardHeader className="bg-gray-50/50 border-b border-gray-100 p-4 md:p-6">
-          <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="relative w-full max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
+      {/* Table Section */}
+      <Card className="border-0 shadow-sm bg-white overflow-hidden">
+        <CardHeader className="border-b border-gray-50 p-5 bg-gray-50/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <CardTitle className="text-base font-bold text-gray-800">Dispatch Registry</CardTitle>
+            <CardDescription className="text-xs text-gray-400">All registered freight logistics loads.</CardDescription>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={15} />
               <Input 
-                placeholder="Search Load ID, Route, Product, Status..." 
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9 bg-white border-gray-200 shadow-sm focus-visible:ring-green-500" 
+                value={search} 
+                onChange={e => setSearch(e.target.value)} 
+                placeholder="Search route, load, cargo..." 
+                className="pl-9 w-full sm:w-[220px] bg-gray-50/50 border-gray-200 h-9 text-xs focus-visible:ring-green-500 shadow-none"
               />
             </div>
-            <div className="flex items-center gap-3">
-               <div className="flex items-center gap-2">
-                 <Filter size={14} className="text-gray-400" />
-                 <select 
-                   value={statusFilter} 
-                   onChange={(e) => setStatusFilter(e.target.value)}
-                   className="text-sm border-gray-200 bg-white rounded-md shadow-sm p-2 focus:ring-green-500 text-gray-700 outline-none"
-                 >
-                   <option value="All">All Statuses</option>
-                   <option value="Open">Open</option>
-                   <option value="Assigned">Assigned</option>
-                   <option value="Completed">Completed</option>
-                 </select>
-               </div>
+            <div className="flex items-center gap-1.5 bg-gray-50/50 p-1 border rounded-lg">
+              {['All', 'Open', 'Assigned', 'Completed'].map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setStatusFilter(tab)}
+                  className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                    statusFilter === tab 
+                      ? 'bg-white text-gray-800 shadow-xs' 
+                      : 'text-gray-400 hover:text-gray-600'
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
             </div>
           </div>
         </CardHeader>
-
+        
         {/* Data Table */}
         <div className="overflow-x-auto">
           <Table>
@@ -272,7 +431,7 @@ export default function ManageLoads() {
                     transition={{ delay: i * 0.02 }}
                     key={load.id} 
                     className="group border-b border-gray-50 hover:bg-green-50/20 cursor-pointer transition-colors"
-                    onClick={() => setSelectedLoad(load)}
+                    onClick={() => setSelectedLoadId(load.id)}
                   >
                     <TableCell className="font-bold text-sm text-green-700">
                       {load.id}
@@ -296,7 +455,7 @@ export default function ManageLoads() {
                         <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1"><Weight size={10}/> {load.tonnes} Tonnes</span>
                       </div>
                     </TableCell>
-                    <TableCell className="font-bold text-sm text-gray-700">₹{load.ratePerTonne}/T</TableCell>
+                    <TableCell className="font-bold text-sm text-gray-700">₹{load.ratePerTonne.toLocaleString('en-IN')}/T</TableCell>
                     <TableCell className="font-bold text-sm text-green-700">
                       ₹{load.totalFreight.toLocaleString('en-IN')}
                     </TableCell>
@@ -310,7 +469,7 @@ export default function ManageLoads() {
                           variant="ghost" 
                           size="icon" 
                           className="h-8 w-8 hover:bg-gray-100 rounded-full text-blue-600"
-                          onClick={() => setSelectedLoad(load)}
+                          onClick={() => setSelectedLoadId(load.id)}
                         >
                           <Eye size={15} />
                         </Button>
@@ -348,114 +507,400 @@ export default function ManageLoads() {
         </div>
       </Card>
 
-      {/* Drawer / Modal for View Load Details */}
-      <Dialog open={!!selectedLoad} onOpenChange={(val) => !val && setSelectedLoad(null)}>
-        <DialogContent className="sm:max-w-[500px] border-0 rounded-2xl shadow-xl overflow-hidden bg-white p-0">
-          {selectedLoad && (
-            <>
-              <div className="p-6 bg-gradient-to-r from-green-50 to-emerald-50 border-b border-green-100 flex items-center justify-between">
-                <div>
-                  <DialogTitle className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                    Load Overview: {selectedLoad.id}
-                  </DialogTitle>
-                  <DialogDescription className="text-xs text-green-700/80 font-medium mt-1">
-                    System Created: {new Date(selectedLoad.createdAt).toLocaleDateString()}
-                  </DialogDescription>
+      {/* ULTRA PREMIUM RIGHT-SIDE DRAWER: Load Details & Top 7 Cheapest Bids */}
+      <AnimatePresence>
+        {selectedLoad && (
+          <div className="fixed inset-0 z-50 flex justify-end">
+            {/* Backdrop */}
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedLoadId(null)}
+              className="absolute inset-0 bg-black/40 backdrop-blur-xs z-10"
+            />
+            
+            {/* Drawer Container */}
+            <motion.div 
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 26, stiffness: 220 }}
+              className="relative w-full max-w-[1250px] h-full bg-slate-50 shadow-2xl flex flex-col z-20 overflow-hidden"
+            >
+              {/* Drawer Header */}
+              <div className="p-6 bg-gradient-to-r from-slate-900 to-slate-800 text-white flex items-center justify-between shadow-md">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-bold px-2 py-0.5 rounded bg-green-500/20 text-green-400 border border-green-500/30">DISPATCH CONTROL</span>
+                    <span className="text-xs font-mono text-slate-300">REF: {selectedLoad.bidId}</span>
+                  </div>
+                  <h2 className="text-xl font-bold flex items-center gap-2">
+                    Load Console: <span className="text-green-400 font-mono">{selectedLoad.id}</span>
+                  </h2>
                 </div>
-                {getStatusBadge(selectedLoad.status)}
+                
+                <div className="flex items-center gap-3">
+                  {selectedLoad.status === 'Open' && (
+                    <Button 
+                      onClick={() => setIsSimulating(!isSimulating)}
+                      className={`gap-2 h-9 px-4 font-bold text-xs uppercase transition-all tracking-wider ${
+                        isSimulating 
+                          ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse' 
+                          : 'bg-green-600 hover:bg-green-700 text-white'
+                      }`}
+                    >
+                      <Activity size={14} className={isSimulating ? "animate-spin" : ""} />
+                      {isSimulating ? "Simulation Active" : "Simulate Live Bids"}
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="icon" onClick={() => setSelectedLoadId(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50">
+                    <X size={18} />
+                  </Button>
+                </div>
               </div>
-              
-              <div className="p-6 space-y-6">
-                {/* Visual Route Pipeline */}
-                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
-                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wider mb-3">Route Stops Pipeline</p>
-                  <div className="flex flex-col gap-2 pl-6 relative">
-                    <div className="absolute left-[9px] top-2 bottom-2 w-0.5 border-l border-dashed border-gray-300"></div>
-                    
-                    <div className="relative flex items-center gap-3">
-                      <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full bg-blue-500 border border-white"></div>
-                      <span className="text-xs font-bold text-gray-800">Origin: <span className="text-blue-600 font-semibold">{selectedLoad.from}</span></span>
-                    </div>
-                    
-                    {selectedLoad.stops && selectedLoad.stops.map((stop, idx) => (
-                      <div key={idx} className="relative flex items-center gap-3 py-1">
-                        <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full bg-orange-400 border border-white"></div>
-                        <span className="text-xs font-semibold text-gray-600">Midpoint: <span className="text-orange-600 font-semibold">{stop}</span></span>
-                      </div>
-                    ))}
-                    
-                    <div className="relative flex items-center gap-3">
-                      <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full bg-green-500 border border-white"></div>
-                      <span className="text-xs font-bold text-gray-800">Destination: <span className="text-green-600 font-semibold">{selectedLoad.to}</span></span>
-                    </div>
-                  </div>
-                </div>
 
-                {/* Cargo Details Grid */}
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex items-center gap-3">
-                    <Weight size={18} className="text-gray-400" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Product & Weight</p>
-                      <p className="text-sm font-semibold text-gray-800">{selectedLoad.product} ({selectedLoad.tonnes} T)</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex items-center gap-3">
-                    <Calendar size={18} className="text-gray-400" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Dispatch Date</p>
-                      <p className="text-sm font-semibold text-gray-800">{selectedLoad.dispatchDate}</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex items-center gap-3">
-                    <CircleDollarSign size={18} className="text-gray-400" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Rate per Tonne</p>
-                      <p className="text-sm font-semibold text-gray-800">₹ {selectedLoad.ratePerTonne.toLocaleString()}/T</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-gray-50/50 p-3 rounded-lg border border-gray-100 flex items-center gap-3">
-                    <TrendingUp size={18} className="text-gray-400" />
-                    <div>
-                      <p className="text-[10px] text-gray-400 font-bold uppercase">Reference ID</p>
-                      <p className="text-sm font-semibold text-gray-800 font-mono text-xs">{selectedLoad.bidId}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Freight Value Highlight */}
-                <div className="bg-green-50 p-4 rounded-xl border border-green-100 flex items-center justify-between">
+              {/* Drawer Workspace */}
+              <div className="flex-1 overflow-y-auto flex flex-col lg:flex-row">
+                
+                {/* Left Side: Load Spec Sheet & Route Timeline */}
+                <div className="w-full lg:w-[350px] bg-white border-r border-slate-200 p-6 flex flex-col gap-6">
+                  
+                  {/* Status Banner */}
                   <div>
-                    <h4 className="text-xs font-bold text-green-800 uppercase">Total Freight Value</h4>
-                    <p className="text-[10px] text-green-600/70 font-medium">Estimated payout for this load</p>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Operational Status</h3>
+                    {selectedLoad.status === 'Assigned' ? (
+                      <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2">
+                        <div className="flex items-center gap-2 text-blue-800 font-bold text-xs">
+                          <CheckCircle2 size={16} className="text-blue-600" />
+                          LOAD ASSIGNED & DISPATCHED
+                        </div>
+                        <p className="text-[11px] text-blue-700">
+                          Trip ID <span className="font-mono font-bold text-xs">{selectedLoad.tripId}</span> has been provisioned. Fleet is locked.
+                        </p>
+                      </div>
+                    ) : selectedLoad.status === 'Completed' ? (
+                      <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-gray-800 font-bold text-xs">
+                          <CheckCircle2 size={16} className="text-gray-500" />
+                          TRIP COMPLETED
+                        </div>
+                        <p className="text-[11px] text-gray-500">Trip has concluded. POD generated successfully.</p>
+                      </div>
+                    ) : (
+                      <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                          <Sparkles size={14} className="text-emerald-600" />
+                          ACTIVE FREIGHT BIDDING
+                        </div>
+                        <p className="text-[11px] text-emerald-700">Currently taking competitive bidding quotes in real-time.</p>
+                      </div>
+                    )}
                   </div>
-                  <div className="text-2xl font-bold text-green-700 font-mono">
-                    ₹ {selectedLoad.totalFreight.toLocaleString('en-IN')}
+
+                  {/* Route Timeline */}
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Transit Route Timeline</h3>
+                    <div className="relative pl-6 space-y-6">
+                      {/* Vertical Connector Line */}
+                      <div className="absolute left-[9px] top-2 bottom-2 w-0.5 bg-slate-200 border-dashed border-l border-slate-300" />
+
+                      {/* Origin */}
+                      <div className="relative">
+                        <span className="absolute -left-6 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-green-100 text-green-700 font-bold text-[10px]">A</span>
+                        <h4 className="text-xs font-bold text-slate-800">{selectedLoad.from}</h4>
+                        <p className="text-[10px] text-slate-400">Loading Terminal</p>
+                      </div>
+
+                      {/* Stops */}
+                      {selectedLoad.stops && selectedLoad.stops.map((stop, index) => (
+                        <div key={index} className="relative">
+                          <span className="absolute -left-6 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-orange-100 text-orange-700 font-bold text-[10px]">{index + 1}</span>
+                          <h4 className="text-xs font-bold text-slate-800">{stop}</h4>
+                          <p className="text-[10px] text-orange-500 font-medium">Intermediate Stop</p>
+                        </div>
+                      ))}
+
+                      {/* Destination */}
+                      <div className="relative">
+                        <span className="absolute -left-6 top-1 flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-blue-700 font-bold text-[10px]">B</span>
+                        <h4 className="text-xs font-bold text-slate-800">{selectedLoad.to}</h4>
+                        <p className="text-[10px] text-slate-400">Receiving Warehouse</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Load Specifications Card */}
+                  <Card className="border border-slate-100 shadow-none bg-slate-50/50">
+                    <CardHeader className="p-4 border-b border-slate-100 bg-slate-50">
+                      <CardTitle className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                        <Building2 size={13} className="text-slate-400" /> SPECIFICATIONS
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Product Cargo:</span>
+                        <span className="font-bold text-slate-800">{selectedLoad.product}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Payload Weight:</span>
+                        <span className="font-bold text-slate-800">{selectedLoad.tonnes} Tonnes</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Target Freight / T:</span>
+                        <span className="font-bold text-slate-800 font-mono">₹{selectedLoad.ratePerTonne}/T</span>
+                      </div>
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-400">Dispatch Target:</span>
+                        <span className="font-bold text-slate-800">{selectedLoad.dispatchDate}</span>
+                      </div>
+                      <div className="border-t border-dashed border-slate-200 pt-3 flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-500">Target Total Freight:</span>
+                        <span className="text-sm font-bold text-green-700 font-mono">₹{selectedLoad.totalFreight.toLocaleString('en-IN')}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Assigned Transporter details */}
+                  {selectedLoad.assignedTransporter && (
+                    <Card className="border border-blue-200 shadow-none bg-blue-50/30 overflow-hidden">
+                      <div className="p-3.5 bg-blue-100/50 border-b border-blue-100 text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                        <Award size={14} className="text-blue-600" /> CONTRACTED CARRIER
+                      </div>
+                      <CardContent className="p-4 space-y-2.5 text-xs text-blue-950">
+                        <p className="font-bold text-sm text-blue-900">{selectedLoad.assignedTransporter.companyName}</p>
+                        <div className="flex justify-between">
+                          <span className="opacity-75">Owner:</span>
+                          <span className="font-semibold">{selectedLoad.assignedTransporter.ownerName}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="opacity-75">Rating:</span>
+                          <span className="font-semibold flex items-center gap-1"><Star size={11} className="fill-amber-400 text-amber-400" /> {selectedLoad.assignedTransporter.rating}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="opacity-75">Fleet Size:</span>
+                          <span className="font-semibold">{selectedLoad.assignedTransporter.fleetSize} Heavy Commercials</span>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  
+                  {/* Export Options */}
+                  <div className="mt-auto space-y-2">
+                    <Button 
+                      onClick={() => handleExportBidsComparison(selectedLoad)}
+                      className="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-xs h-9 justify-center gap-2 text-xs font-bold"
+                    >
+                      <FileSpreadsheet size={14} className="text-green-600" /> Export Comparison Sheet
+                    </Button>
                   </div>
                 </div>
+
+                {/* Right Side: Bid Marketplace (Cheapest Bids) */}
+                <div className="flex-1 p-6 flex flex-col gap-6">
+                  
+                  {/* Bids Control Bar */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                        Top 7 Competitive Bids <Badge className="bg-green-600 text-white font-mono">{filteredBids.length}</Badge>
+                      </h3>
+                      <p className="text-xs text-slate-400">Competitive carrier quotes sorted by lowest freight price first.</p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={14} />
+                        <Input 
+                          value={bidSearch} 
+                          onChange={e => setBidSearch(e.target.value)} 
+                          placeholder="Search transporters..." 
+                          className="pl-8 bg-white border-slate-200 text-xs h-9 shadow-xs"
+                        />
+                      </div>
+                      
+                      <div className="flex items-center gap-1 bg-slate-200/50 p-1 border rounded-lg">
+                        {['Cheapest', 'Highest Rated', 'Fastest ETA', 'Verified Only'].map((opt) => (
+                          <button
+                            key={opt}
+                            onClick={() => setBidFilter(opt as any)}
+                            className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
+                              bidFilter === opt 
+                                ? 'bg-white text-slate-800 shadow-xs' 
+                                : 'text-slate-400 hover:text-slate-600'
+                            }`}
+                          >
+                            {opt}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bids Table Card */}
+                  <Card className="border border-slate-200/60 shadow-sm bg-white overflow-hidden flex-1 flex flex-col">
+                    <div className="overflow-x-auto flex-1">
+                      <Table className="w-full">
+                        <TableHeader className="bg-slate-50 border-b">
+                          <TableRow>
+                            <TableHead className="font-bold text-slate-600 text-xs w-[60px] text-center">Rank</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Transporter</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Vehicle Type</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Bid Amount</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Rate / T</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">ETA</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Rating</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Verification</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Status</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs text-right">Actions</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          <AnimatePresence>
+                            {filteredBids.map((bid, i) => (
+                              <motion.tr 
+                                layout
+                                initial={{ opacity: 0, y: 12 }} 
+                                animate={{ opacity: 1, y: 0 }} 
+                                exit={{ opacity: 0 }} 
+                                transition={{ type: 'spring', stiffness: 220, damping: 20 }}
+                                key={bid.id} 
+                                className={`border-b group hover:bg-slate-50/80 transition-colors ${
+                                  bid.status === 'Approved' ? 'bg-green-50/20' : ''
+                                }`}
+                              >
+                                {/* Rank */}
+                                <TableCell className="text-center font-mono">
+                                  <span className={`inline-flex items-center justify-center w-6 h-6 rounded-full font-bold text-xs ${
+                                    bid.rank === 1 ? 'bg-amber-100 text-amber-800' :
+                                    bid.rank === 2 ? 'bg-slate-200 text-slate-700' :
+                                    bid.rank === 3 ? 'bg-orange-100 text-orange-800' : 'bg-slate-100 text-slate-600'
+                                  }`}>
+                                    {bid.rank}
+                                  </span>
+                                </TableCell>
+
+                                {/* Transporter Profile */}
+                                <TableCell className="font-bold text-slate-800 text-xs">
+                                  <div className="flex flex-col">
+                                    <span 
+                                      onClick={() => setViewingTransporter(bid.transporterDetails)}
+                                      className="hover:underline hover:text-green-700 cursor-pointer"
+                                    >
+                                      {bid.transporterName}
+                                    </span>
+                                    <span className="text-[9px] text-slate-400 font-medium">Exp: {bid.experienceYears} Years</span>
+                                  </div>
+                                </TableCell>
+
+                                {/* Vehicle Type */}
+                                <TableCell className="text-xs text-slate-600 font-medium">
+                                  {bid.vehicleType}
+                                </TableCell>
+
+                                {/* Bid Amount */}
+                                <TableCell className="font-bold text-green-700 font-mono text-xs">
+                                  ₹{bid.bidAmount.toLocaleString('en-IN')}
+                                </TableCell>
+
+                                {/* Rate Per Tonne */}
+                                <TableCell className="text-slate-600 font-mono text-xs">
+                                  ₹{bid.pricePerTonne}/T
+                                </TableCell>
+
+                                {/* ETA */}
+                                <TableCell className="text-xs font-semibold text-slate-700">
+                                  <span className="flex items-center gap-1.5"><Clock size={12} className="text-slate-400" /> {bid.eta}</span>
+                                </TableCell>
+
+                                {/* Rating */}
+                                <TableCell>
+                                  <div className="flex items-center gap-1 text-xs font-semibold text-slate-800">
+                                    <Star size={12} className="fill-amber-400 text-amber-400" />
+                                    {bid.driverRating}
+                                  </div>
+                                </TableCell>
+
+                                {/* Verification Status Badges */}
+                                <TableCell>
+                                  <div className="flex flex-wrap gap-1 max-w-[150px]">
+                                    {bid.verificationStatus.map((vStatus, idx) => (
+                                      <span 
+                                        key={idx} 
+                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                                          vStatus === 'Trusted Transporter' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                                          vStatus === 'KYC Verified' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                          vStatus === 'Insurance Valid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-100 text-gray-600'
+                                        }`}
+                                      >
+                                        {vStatus === 'KYC Verified' && <ShieldCheck size={9} />}
+                                        {vStatus}
+                                      </span>
+                                    ))}
+                                  </div>
+                                </TableCell>
+
+                                {/* Bid Status */}
+                                <TableCell>
+                                  {getBidStatusBadge(bid.status)}
+                                </TableCell>
+
+                                {/* Actions */}
+                                <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                  {selectedLoad.status === 'Open' ? (
+                                    <div className="flex items-center justify-end gap-1 select-none">
+                                      <Button 
+                                        onClick={() => handleApproveBid(selectedLoad.id, bid.id, bid.transporterName)}
+                                        size="sm"
+                                        className="bg-green-600 hover:bg-green-700 text-white h-7 text-[10px] px-2.5 font-bold uppercase rounded shadow-xs"
+                                      >
+                                        Approve
+                                      </Button>
+                                      <Button 
+                                        onClick={() => {
+                                          setNegotiatingBid({ loadId: selectedLoad.id, bid });
+                                          setCounterOffer(bid.bidAmount.toString());
+                                        }}
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-7 text-[10px] px-2.5 font-bold uppercase border-slate-200 text-slate-700 bg-white"
+                                      >
+                                        Negotiate
+                                      </Button>
+                                      <Button 
+                                        onClick={() => setRejectConfirmBid({ loadId: selectedLoad.id, bidId: bid.id, transporterName: bid.transporterName })}
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-red-500 rounded-full hover:bg-red-50"
+                                      >
+                                        <X size={13} />
+                                      </Button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-wider">Locked</span>
+                                  )}
+                                </TableCell>
+                              </motion.tr>
+                            ))}
+                            
+                            {filteredBids.length === 0 && (
+                              <TableRow>
+                                <TableCell colSpan={10} className="h-32 text-center text-slate-400 italic">
+                                  No bids match your search query or filters.
+                                </TableCell>
+                              </TableRow>
+                            )}
+                          </AnimatePresence>
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </Card>
+                </div>
               </div>
-              
-              <div className="p-4 bg-gray-50 border-t flex justify-end gap-2">
-                <Button variant="outline" onClick={() => setSelectedLoad(null)} className="h-9 px-4 border-gray-200">
-                  Close details
-                </Button>
-                <Button 
-                  onClick={() => {
-                    setSelectedLoad(null);
-                    startEdit(selectedLoad);
-                  }}
-                  className="bg-green-600 hover:bg-green-700 text-white h-9 px-4"
-                >
-                  Edit Load
-                </Button>
-              </div>
-            </>
-          )}
-        </DialogContent>
-      </Dialog>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal for Edit Load */}
       <Dialog open={!!editingLoad} onOpenChange={(val) => !val && setEditingLoad(null)}>
@@ -639,6 +1084,175 @@ export default function ManageLoads() {
               onClick={() => deleteConfirmId && handleDelete(deleteConfirmId)}
             >
               Permanently Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* NESTED MODAL: Carrier Profile Credentials Viewer */}
+      <Dialog open={!!viewingTransporter} onOpenChange={(val) => !val && setViewingTransporter(null)}>
+        <DialogContent className="sm:max-w-[450px] border-0 rounded-2xl shadow-2xl overflow-hidden bg-white p-0">
+          {viewingTransporter && (
+            <>
+              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">VERIFIED CARRIER</span>
+                  <DialogTitle className="text-base font-bold tracking-tight">{viewingTransporter.companyName}</DialogTitle>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setViewingTransporter(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-800">
+                  <X size={16} />
+                </Button>
+              </div>
+
+              <div className="p-6 space-y-4 text-sm text-slate-700">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Owner Name</p>
+                    <p className="font-semibold text-slate-800">{viewingTransporter.ownerName}</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Fleet Size</p>
+                    <p className="font-semibold text-slate-800">{viewingTransporter.fleetSize} Active Trucks</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Trips Completed</p>
+                    <p className="font-semibold text-slate-800">{viewingTransporter.completedTrips}+ Safe Trips</p>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Experience</p>
+                    <p className="font-semibold text-slate-800">{viewingTransporter.experienceYears} Years Operational</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">KYC Verification</p>
+                    <Badge className="bg-green-100 text-green-800 border-none font-bold text-[10px] px-2.5">
+                      {viewingTransporter.kycStatus}
+                    </Badge>
+                  </div>
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase">Insurance Validity</p>
+                    <p className="font-semibold text-emerald-700 flex items-center gap-1 text-xs">
+                      <ShieldCheck size={13} /> {viewingTransporter.insuranceValidity}
+                    </p>
+                  </div>
+                </div>
+
+                {viewingTransporter.remarks && (
+                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
+                    <p className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
+                      <MessageSquare size={11} /> Negotiation Comments
+                    </p>
+                    <p className="text-xs italic text-slate-600 mt-1">{viewingTransporter.remarks}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t flex justify-end">
+                <Button onClick={() => setViewingTransporter(null)} className="bg-slate-900 hover:bg-slate-800 text-white h-9 px-4">
+                  Close Profile
+                </Button>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* NESTED MODAL: Freight Bid Negotiation Counter Offer */}
+      <Dialog open={!!negotiatingBid} onOpenChange={(val) => !val && setNegotiatingBid(null)}>
+        <DialogContent className="sm:max-w-[420px] border-0 rounded-2xl shadow-2xl overflow-hidden bg-white p-0">
+          {negotiatingBid && (
+            <form onSubmit={handleNegotiateSubmit}>
+              <div className="p-6 bg-gradient-to-r from-amber-50 to-orange-50 text-slate-900 border-b border-amber-100 flex items-center justify-between">
+                <div className="space-y-1">
+                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-800 border border-amber-500/30 px-2 py-0.5 rounded">NEGOTIATION CONSOLE</span>
+                  <DialogTitle className="text-base font-bold tracking-tight">
+                    Negotiate: {negotiatingBid.bid.transporterName}
+                  </DialogTitle>
+                </div>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setNegotiatingBid(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-900 hover:bg-amber-100/50">
+                  <X size={16} />
+                </Button>
+              </div>
+
+              <div className="p-6 space-y-4">
+                <div className="bg-amber-50 border border-amber-100/80 rounded-xl p-3.5 space-y-2 text-xs text-amber-950">
+                  <div className="flex justify-between">
+                    <span>Current Carrier Bid:</span>
+                    <span className="font-bold text-slate-700 font-mono">₹{negotiatingBid.bid.bidAmount.toLocaleString('en-IN')}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Base Target Rate:</span>
+                    <span className="font-bold text-slate-700 font-mono">₹{selectedLoad?.totalFreight.toLocaleString('en-IN')}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                    <Coins size={13} className="text-slate-400" /> Counter Offer Amount (INR) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">₹</span>
+                    <Input 
+                      type="number" 
+                      value={counterOffer}
+                      onChange={e => setCounterOffer(e.target.value)}
+                      placeholder="Enter counter freight amount..." 
+                      className="pl-7 border-slate-200 font-mono focus-visible:ring-amber-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-bold text-slate-500 uppercase flex items-center gap-1">
+                    <MessageSquare size={13} className="text-slate-400" /> Special Remarks / Instructions
+                  </label>
+                  <textarea 
+                    value={negotiationRemarks}
+                    onChange={e => setNegotiationRemarks(e.target.value)}
+                    placeholder="Enter negotiation terms, free detention details, or trip remarks..." 
+                    className="w-full min-h-[80px] p-3 rounded-md border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-amber-500 text-slate-700"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setNegotiatingBid(null)} className="h-9 px-4 border-slate-200">
+                  Cancel
+                </Button>
+                <Button type="submit" className="bg-amber-600 hover:bg-amber-700 text-white h-9 px-4 shadow-sm font-bold uppercase text-xs tracking-wider">
+                  Transmit Counter Offer
+                </Button>
+              </div>
+            </form>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirmation Dialog for Bid Rejection */}
+      <Dialog open={!!rejectConfirmBid} onOpenChange={(val) => !val && setRejectConfirmBid(null)}>
+        <DialogContent className="sm:max-w-[400px] border-0 rounded-2xl shadow-xl bg-white p-6">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900 flex items-center gap-2">
+              <AlertTriangle size={18} className="text-red-500" /> Reject Bid
+            </DialogTitle>
+            <DialogDescription className="text-sm text-slate-500 mt-2">
+              Are you sure you want to reject the bid from <span className="font-bold text-slate-800">{rejectConfirmBid?.transporterName}</span>? A notification will be dispatched to the carrier.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-6 flex gap-2 sm:justify-end">
+            <Button variant="outline" onClick={() => setRejectConfirmBid(null)} className="border-slate-200">
+              Cancel
+            </Button>
+            <Button 
+              className="bg-red-600 hover:bg-red-700 text-white font-bold"
+              onClick={handleRejectBid}
+            >
+              Confirm Rejection
             </Button>
           </DialogFooter>
         </DialogContent>
