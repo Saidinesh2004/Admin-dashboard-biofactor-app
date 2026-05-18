@@ -22,31 +22,31 @@ const menuItems = [
   { group: "DASHBOARD", items: [
     { name: "Overview", icon: LayoutDashboard, path: "/" }
   ]},
-  { group: "LOADS", items: [
+  { group: "LOADS & BIDS", items: [
     { name: "Create Load", icon: MapPin, path: "/create-load" },
-    { name: "Manage Loads", icon: ClipboardList, path: "/loads" }
+    { name: "Manage Loads", icon: ClipboardList, path: "/loads" },
+    { name: "All Bids", icon: TrendingUp, path: "/bids" },
+    { name: "Bid Analytics", icon: BarChart3, path: "/bids/analytics" }
   ]},
-  { group: "TRIPS", items: [
-    { name: "All Trips", icon: Truck, path: "/trips" },
-    { name: "Track Trips", icon: MapPin, path: "/trips/track" }
-  ]},
-  { group: "POD & PAYMENTS", items: [
-    { name: "POD Verification", icon: CheckCircle2, path: "/pod" },
+  { group: "PAYMENTS", items: [
     { name: "Payments", icon: CreditCard, path: "/payments" },
     { name: "Invoices", icon: FileText, path: "/invoices" }
   ]},
-  { group: "USERS & ROLES", items: [
-    { name: "Users", icon: Users, path: "/users" },
-    { name: "Roles & Permissions", icon: UserCheck, path: "/roles" }
+  { group: "USERS", items: [
+    { name: "Users", icon: Users, path: "/users" }
   ]},
   { group: "VEHICLES", items: [
     { name: "Manage Vehicles", icon: Truck, path: "/vehicles" }
   ]},
   { group: "REPORTS", items: [
-    { name: "Business Reports", icon: BarChart3, path: "/reports" }
+    { name: "Business Reports", icon: BarChart3, path: "/reports" },
+    { name: "Load Reports", icon: FileText, path: "/reports/loads" },
+    { name: "Payment Reports", icon: CreditCard, path: "/reports/payments" }
   ]},
   { group: "SETTINGS", items: [
-    { name: "General Settings", icon: Settings, path: "/settings" }
+    { name: "General Settings", icon: Settings, path: "/settings" },
+    { name: "Documents", icon: FileText, path: "/settings/documents" },
+    { name: "Notification Settings", icon: CheckCircle2, path: "/settings/notifications" }
   ]}
 ]
 
