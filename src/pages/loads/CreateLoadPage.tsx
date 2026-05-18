@@ -113,7 +113,7 @@ export default function CreateLoadPage() {
         from: formData.fromLocation,
         stops: validStops,
         to: formData.toLocation,
-        product: formData.product,
+        product: 'General',
         tonnes: parseFloat(formData.tonnes),
         ratePerTonne: parseFloat(formData.costPerTonne),
         totalFreight: totalFreight,
@@ -304,28 +304,6 @@ export default function CreateLoadPage() {
                         disabled
                         className="bg-gray-50 font-mono text-gray-500 border-gray-200 shadow-none"
                       />
-                    </div>
-
-                    {/* Product Selection */}
-                    <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
-                        <Package className="w-3.5 h-3.5 text-gray-400" />
-                        Product <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        name="product"
-                        value={formData.product}
-                        onChange={handleChange}
-                        className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm transition-all focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2"
-                      >
-                        <option value="Rice">Rice</option>
-                        <option value="Wheat">Wheat</option>
-                        <option value="Oranges">Oranges</option>
-                        <option value="Sugar">Sugar</option>
-                        <option value="Cement">Cement</option>
-                        <option value="Steel">Steel</option>
-                        <option value="Chemicals">Chemicals</option>
-                      </select>
                     </div>
 
                     {/* Dispatch Date */}

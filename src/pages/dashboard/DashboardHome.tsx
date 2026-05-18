@@ -46,7 +46,7 @@ export default function DashboardHome() {
   const [quickForm, setQuickForm] = useState({
     from: '',
     to: '',
-    product: 'Rice',
+    product: 'General',
     quantity: '',
     rate: '',
     date: ''
@@ -58,21 +58,14 @@ export default function DashboardHome() {
     const open = loads.filter(l => l.status === 'Open').length;
     const assigned = loads.filter(l => l.status === 'Assigned').length;
     const completed = loads.filter(l => l.status === 'Completed').length;
-    
-    // Revenue is the sum of totalFreight for Completed & Assigned loads
-    const revenue = loads
-      .filter(l => l.status === 'Completed' || l.status === 'Assigned')
-      .reduce((sum, l) => sum + (l.totalFreight || 0), 0);
-      
-    // Active vehicles is dynamically based on Assigned/Completed loads
-    const activeVehicles = assigned * 2 + completed * 1 + 5;
-    
+    const revenue = loads.filter(l => l.status === 'Completed' || l.status === 'Assigned').reduce((acc, curr) => acc + (curr.totalFreight || 0), 0);
+    const activeVehicles = loads.filter(l => l.status === 'Assigned').length;
     return { total, open, assigned, completed, revenue, activeVehicles };
   }, [loads]);
 
   const handleQuickSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!quickForm.from || !quickForm.to || !quickForm.product || !quickForm.quantity || !quickForm.rate || !quickForm.date) {
+    if (!quickForm.from || !quickForm.to || !quickForm.quantity || !quickForm.rate || !quickForm.date) {
       toast({ title: 'Validation Error', description: 'Please fill all quick form fields', variant: 'destructive' });
       return;
     }
@@ -91,7 +84,7 @@ export default function DashboardHome() {
         from: quickForm.from,
         stops: [],
         to: quickForm.to,
-        product: quickForm.product,
+        product: 'General',
         tonnes: tonnes,
         ratePerTonne: ratePerTonne,
         totalFreight: totalFreight,
@@ -106,7 +99,7 @@ export default function DashboardHome() {
         className: "bg-green-600 text-white border-none" 
       });
       
-      setQuickForm({ from: '', to: '', product: 'Rice', quantity: '', rate: '', date: '' });
+      setQuickForm({ from: '', to: '', product: 'General', quantity: '', rate: '', date: '' });
       navigate('/loads');
     }, 1000);
   };
@@ -306,29 +299,11 @@ export default function DashboardHome() {
                   <Input value={quickForm.to} onChange={e => setQuickForm({...quickForm, to: e.target.value})} placeholder="City, State" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-gray-600 uppercase">Product Type</label>
-                  <select
-                    value={quickForm.product}
-                    onChange={e => setQuickForm({...quickForm, product: e.target.value})}
-                    className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="Rice">Rice</option>
-                    <option value="Wheat">Wheat</option>
-                    <option value="Oranges">Oranges</option>
-                    <option value="Sugar">Sugar</option>
-                    <option value="Cement">Cement</option>
-                    <option value="Steel">Steel</option>
-                    <option value="Chemicals">Chemicals</option>
-                  </select>
-                </div>
+              <div className="grid grid-cols-3 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Quantity (Tonnes)</label>
                   <Input value={quickForm.quantity} onChange={e => setQuickForm({...quickForm, quantity: e.target.value})} type="number" placeholder="0.00" className="bg-gray-50 border-gray-100 focus-visible:ring-green-500" />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1.5">
                   <label className="text-xs font-bold text-gray-600 uppercase">Base Rate / Tonne</label>
                   <div className="relative">
