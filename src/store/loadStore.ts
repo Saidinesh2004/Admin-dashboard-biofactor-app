@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { loadService, type Load, type Bid, type Transporter } from '@/services/loadService';
+import { useTransporterStore } from './transporterStore';
 
 export type { Load, Bid, Transporter };
 
@@ -22,7 +23,6 @@ const generateMockBids = (load: Load): Bid[] => {
   const vehicleTypes = ['22-Tonne Open High Side', '19-Tonne Closed Box Container', '32-Tonne Open Trailer', '15-Tonne Triaxle', '22-Tonne Multi-axle'];
 
   const bids: Bid[] = shuffled.map((t, idx) => {
-    // Generate a price per tonne within -15% to +10% of the load's rate
     const percentageVariation = -0.15 + Math.random() * 0.25; 
     const pricePerTonne = Math.round(load.ratePerTonne * (1 + percentageVariation));
     const bidAmount = Math.round(pricePerTonne * load.tonnes);
@@ -64,10 +64,7 @@ const generateMockBids = (load: Load): Bid[] => {
     };
   });
 
-  // Sort by bidAmount ascending
   const sortedBids = bids.sort((a, b) => a.bidAmount - b.bidAmount);
-  
-  // Assign ranks
   return sortedBids.map((b, index) => ({
     ...b,
     rank: index + 1
@@ -82,7 +79,8 @@ interface LoadState {
   fetchLoads: () => void;
   approveBid: (loadId: string, bidId: string) => void;
   rejectBid: (loadId: string, bidId: string) => void;
-  negotiateBid: (loadId: string, bidId: string, counterOffer: number, remarks: string) => void;
+  negotiateBid: (loadId: string, bidId: string, counterOffer: number, remarks: string, validTill: string, priority: string) => void;
+  assignVehicle: (loadId: string, vehicleNo: string, driverName: string) => void;
   simulateNewBid: (loadId: string) => void;
 }
 
@@ -141,15 +139,25 @@ export const useLoadStore = create<LoadState>((set, get) => ({
           if (b.id === bidId) {
             return { ...b, status: 'Approved' as const };
           }
-          return { ...b, status: 'Rejected' as const };
+          return { ...b, status: 'Locked' as const };
         }) || [];
+
+        const suffix = l.id.split('-')[1] || '1001';
+        const generatedTripId = `TRIP-2026-${suffix}`;
+
+        // Notify via Transporter Store
+        useTransporterStore.getState().addNotification(
+          loadId,
+          'Assignment',
+          `Congratulations! Your bid of ₹${approvedBid.bidAmount.toLocaleString('en-IN')} has been accepted. Trip ID: ${generatedTripId}.`
+        );
 
         return {
           ...l,
-          status: 'Assigned' as const,
+          status: 'Assigned & Dispatched' as const,
           bids: updatedBids,
           assignedTransporter: approvedBid.transporterDetails,
-          tripId: `TRIP-2026-${Math.floor(100000 + Math.random() * 900000)}`
+          tripId: generatedTripId
         };
       }
       return l;
@@ -161,15 +169,31 @@ export const useLoadStore = create<LoadState>((set, get) => ({
   rejectBid: (loadId, bidId) => {
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId) {
+        const rejectedBid = l.bids?.find(b => b.id === bidId);
         const updatedBids = l.bids?.map(b => {
           if (b.id === bidId) {
             return { ...b, status: 'Rejected' as const };
           }
           return b;
         }) || [];
+
+        // Notify Transporter
+        if (rejectedBid) {
+          useTransporterStore.getState().addNotification(
+            loadId,
+            'Rejection',
+            `Your bid of ₹${rejectedBid.bidAmount.toLocaleString('en-IN')} has been declined.`
+          );
+        }
+
+        // IF ALL REJECTED: Load status: Awaiting New Bids
+        const allRejected = updatedBids.every(b => b.status === 'Rejected');
+        const loadStatus = allRejected ? ('Awaiting New Bids' as const) : l.status;
+
         return {
           ...l,
-          bids: updatedBids
+          bids: updatedBids,
+          status: loadStatus
         };
       }
       return l;
@@ -178,26 +202,60 @@ export const useLoadStore = create<LoadState>((set, get) => ({
     loadService.saveLoads(updatedLoads);
   },
 
-  negotiateBid: (loadId, bidId, counterOffer, remarks) => {
+  negotiateBid: (loadId, bidId, counterOffer, remarks, validTill, priority) => {
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId) {
+        const targetBid = l.bids?.find(b => b.id === bidId);
         const updatedBids = l.bids?.map(b => {
           if (b.id === bidId) {
             return { 
               ...b, 
               status: 'Negotiating' as const,
-              bidAmount: counterOffer, // Counter offer becomes current bid amount temporarily or shown as counter offer
+              bidAmount: counterOffer,
               transporterDetails: {
                 ...b.transporterDetails,
-                remarks // Save remarks inside
+                remarks
               }
             };
           }
           return b;
         }) || [];
+
+        // Notify Transporter of Counter Offer
+        if (targetBid) {
+          useTransporterStore.getState().addNotification(
+            loadId,
+            'CounterOffer',
+            `Received a counter offer of ₹${counterOffer.toLocaleString('en-IN')} with priority: ${priority}. Remarks: ${remarks}.`
+          );
+        }
+
         return {
           ...l,
-          bids: updatedBids
+          status: 'Negotiation In Progress' as const,
+          bids: updatedBids,
+          priority: priority as any,
+          negotiationDetails: {
+            counterOffer,
+            remarks,
+            validTill,
+            priority
+          }
+        };
+      }
+      return l;
+    });
+    set({ loads: updatedLoads });
+    loadService.saveLoads(updatedLoads);
+  },
+
+  assignVehicle: (loadId, vehicleNo, driverName) => {
+    const updatedLoads = get().loads.map((l) => {
+      if (l.id === loadId) {
+        return {
+          ...l,
+          assignedVehicle: vehicleNo,
+          assignedDriver: driverName
         };
       }
       return l;
@@ -215,17 +273,14 @@ export const useLoadStore = create<LoadState>((set, get) => ({
 
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId && l.status === 'Open' && l.bids && l.bids.length > 0) {
-        // Pick a random transporter
         const randomTransporter = transporters[Math.floor(Math.random() * transporters.length)];
-        
-        // Generate an extremely cheap bid to trigger ranking animation!
         const existingCheapestPricePerTonne = Math.min(...l.bids.map(b => b.pricePerTonne));
-        const pricePerTonne = Math.round(existingCheapestPricePerTonne * 0.95); // 5% cheaper!
+        const pricePerTonne = Math.round(existingCheapestPricePerTonne * 0.95);
         const bidAmount = pricePerTonne * l.tonnes;
         
         const newBid: Bid = {
           id: `BID-2026-${1000 + Math.floor(Math.random() * 9000)}`,
-          rank: 0, // Computed below
+          rank: 0,
           transporterName: randomTransporter.name,
           vehicleType: '22-Tonne Open High Side',
           bidAmount,
@@ -247,10 +302,7 @@ export const useLoadStore = create<LoadState>((set, get) => ({
           }
         };
 
-        // Combine and keep top 7
         const allBids = [...l.bids, newBid].sort((a, b) => a.bidAmount - b.bidAmount);
-        
-        // Take top 7 cheapest
         const top7Bids = allBids.slice(0, 7).map((b, index) => ({
           ...b,
           rank: index + 1

@@ -1,4 +1,4 @@
-export type BidStatus = 'Pending' | 'Approved' | 'Rejected' | 'Negotiating' | 'Selected';
+export type BidStatus = 'Pending' | 'Approved' | 'Rejected' | 'Negotiating' | 'Selected' | 'Locked';
 
 export interface Transporter {
   companyName: string;
@@ -38,11 +38,20 @@ export interface Load {
   ratePerTonne: number;
   totalFreight: number;
   dispatchDate: string;
-  status: 'Open' | 'Assigned' | 'Completed';
+  status: 'Open' | 'Assigned & Dispatched' | 'Negotiation In Progress' | 'Awaiting New Bids' | 'Completed';
   createdAt: number;
   bids?: Bid[];
   assignedTransporter?: Transporter;
   tripId?: string;
+  assignedVehicle?: string;
+  assignedDriver?: string;
+  priority?: 'Low' | 'Medium' | 'High';
+  negotiationDetails?: {
+    counterOffer: number;
+    remarks: string;
+    validTill: string;
+    priority: string;
+  };
 }
 
 const LOCAL_STORAGE_KEY = 'biofactor-loads-v2';
@@ -59,7 +68,7 @@ const INITIAL_LOADS: Load[] = [
     ratePerTonne: 2200,
     totalFreight: 55000,
     dispatchDate: "2026-05-18",
-    status: "Assigned",
+    status: "Assigned & Dispatched",
     createdAt: Date.now() - 3600000 * 24 * 3
   },
   {

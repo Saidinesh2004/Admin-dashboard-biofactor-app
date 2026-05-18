@@ -40,6 +40,8 @@ export default function ManageLoads() {
   const [negotiatingBid, setNegotiatingBid] = useState<{ loadId: string; bid: Bid } | null>(null);
   const [counterOffer, setCounterOffer] = useState('');
   const [negotiationRemarks, setNegotiationRemarks] = useState('');
+  const [negotiationValidTill, setNegotiationValidTill] = useState('2026-05-30');
+  const [negotiationPriority, setNegotiationPriority] = useState('Medium');
   
   const [rejectConfirmBid, setRejectConfirmBid] = useState<{ loadId: string; bidId: string; transporterName: string } | null>(null);
   const [viewingTransporter, setViewingTransporter] = useState<Transporter | null>(null);
@@ -53,7 +55,7 @@ export default function ManageLoads() {
     tonnes: 0,
     ratePerTonne: 0,
     dispatchDate: '',
-    status: 'Open' as 'Open' | 'Assigned' | 'Completed'
+    status: 'Open' as Load['status']
   });
 
   // Get the selected load dynamically from the store to ensure reactive updates
@@ -141,10 +143,10 @@ export default function ManageLoads() {
   const stats = useMemo(() => {
     const total = loads.length;
     const open = loads.filter(l => l.status === 'Open').length;
-    const assigned = loads.filter(l => l.status === 'Assigned').length;
+    const assigned = loads.filter(l => l.status === 'Assigned & Dispatched').length;
     const completed = loads.filter(l => l.status === 'Completed').length;
     const revenue = loads
-      .filter(l => l.status === 'Completed' || l.status === 'Assigned')
+      .filter(l => l.status === 'Completed' || l.status === 'Assigned & Dispatched')
       .reduce((sum, l) => sum + (l.totalFreight || 0), 0);
     const activeVehicles = assigned;
     
@@ -155,8 +157,12 @@ export default function ManageLoads() {
     switch (status) {
       case 'Open': 
         return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-none px-3 py-1 font-semibold">Open</Badge>;
-      case 'Assigned': 
-        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-none px-3 py-1 font-semibold">Assigned</Badge>;
+      case 'Assigned & Dispatched': 
+        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-none px-3 py-1 font-semibold">Assigned & Dispatched</Badge>;
+      case 'Negotiation In Progress': 
+        return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none px-3 py-1 font-semibold">Negotiating</Badge>;
+      case 'Awaiting New Bids': 
+        return <Badge className="bg-rose-100 text-rose-800 hover:bg-rose-200 border-none px-3 py-1 font-semibold">Awaiting Bids</Badge>;
       case 'Completed': 
         return <Badge className="bg-gray-100 text-gray-800 hover:bg-gray-200 border-none px-3 py-1 font-semibold">Completed</Badge>;
       default: 
@@ -310,7 +316,7 @@ export default function ManageLoads() {
       return;
     }
 
-    negotiateBid(negotiatingBid.loadId, negotiatingBid.bid.id, amount, negotiationRemarks);
+    negotiateBid(negotiatingBid.loadId, negotiatingBid.bid.id, amount, negotiationRemarks, negotiationValidTill, negotiationPriority);
     toast({
       title: "Counter Offer Sent",
       description: `Sent offer of ₹${amount.toLocaleString()} to ${negotiatingBid.bid.transporterName}.`,
@@ -320,6 +326,8 @@ export default function ManageLoads() {
     setNegotiatingBid(null);
     setCounterOffer('');
     setNegotiationRemarks('');
+    setNegotiationValidTill('2026-05-30');
+    setNegotiationPriority('Medium');
   };
 
   const formatRevenue = (value: number) => {
@@ -541,7 +549,7 @@ export default function ManageLoads() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  {selectedLoad.status === 'Open' && (
+                  {selectedLoad.status !== 'Assigned & Dispatched' && selectedLoad.status !== 'Completed' && (
                     <Button 
                       onClick={() => setIsSimulating(!isSimulating)}
                       className={`gap-2 h-9 px-4 font-bold text-xs uppercase transition-all tracking-wider ${
@@ -569,7 +577,7 @@ export default function ManageLoads() {
                   {/* Status Banner */}
                   <div>
                     <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Operational Status</h3>
-                    {selectedLoad.status === 'Assigned' ? (
+                    {selectedLoad.status === 'Assigned & Dispatched' ? (
                       <div className="bg-blue-50 border border-blue-100 rounded-xl p-4 space-y-2">
                         <div className="flex items-center gap-2 text-blue-800 font-bold text-xs">
                           <CheckCircle2 size={16} className="text-blue-600" />
@@ -578,6 +586,24 @@ export default function ManageLoads() {
                         <p className="text-[11px] text-blue-700">
                           Trip ID <span className="font-mono font-bold text-xs">{selectedLoad.tripId}</span> has been provisioned. Fleet is locked.
                         </p>
+                      </div>
+                    ) : selectedLoad.status === 'Negotiation In Progress' ? (
+                      <div className="bg-amber-50 border border-amber-100 rounded-xl p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-amber-800 font-bold text-xs">
+                          <Clock size={16} className="text-amber-600 animate-pulse" />
+                          NEGOTIATION IN PROGRESS
+                        </div>
+                        <p className="text-[11px] text-amber-700">
+                          Counter offer of <span className="font-bold">₹{selectedLoad.negotiationDetails?.counterOffer.toLocaleString()}</span> has been sent. Priority: {selectedLoad.negotiationDetails?.priority}.
+                        </p>
+                      </div>
+                    ) : selectedLoad.status === 'Awaiting New Bids' ? (
+                      <div className="bg-rose-50 border border-rose-100 rounded-xl p-4 space-y-1">
+                        <div className="flex items-center gap-2 text-rose-800 font-bold text-xs">
+                          <AlertTriangle size={16} className="text-rose-600" />
+                          AWAITING NEW BIDS
+                        </div>
+                        <p className="text-[11px] text-rose-700">All current bids were rejected. Awaiting new transporter rate cards.</p>
                       </div>
                     ) : selectedLoad.status === 'Completed' ? (
                       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-1">
@@ -590,7 +616,7 @@ export default function ManageLoads() {
                     ) : (
                       <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
                         <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
-                          <Sparkles size={14} className="text-emerald-600" />
+                          <Sparkles size={14} className="text-emerald-600 animate-spin" />
                           ACTIVE FREIGHT BIDDING
                         </div>
                         <p className="text-[11px] text-emerald-700">Currently taking competitive bidding quotes in real-time.</p>
@@ -847,7 +873,7 @@ export default function ManageLoads() {
 
                                 {/* Actions */}
                                 <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                  {selectedLoad.status === 'Open' ? (
+                                  {selectedLoad.status !== 'Assigned & Dispatched' && selectedLoad.status !== 'Completed' ? (
                                     <div className="flex items-center justify-end gap-1 select-none">
                                       <Button 
                                         onClick={() => handleApproveBid(selectedLoad.id, bid.id, bid.transporterName)}
@@ -1204,6 +1230,30 @@ export default function ManageLoads() {
                       placeholder="Enter counter freight amount..." 
                       className="pl-7 border-slate-200 font-mono focus-visible:ring-amber-500"
                     />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Valid Till</label>
+                    <Input 
+                      type="date"
+                      value={negotiationValidTill}
+                      onChange={e => setNegotiationValidTill(e.target.value)}
+                      className="border-slate-200 text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-bold text-slate-500 uppercase">Priority Level</label>
+                    <select
+                      value={negotiationPriority}
+                      onChange={e => setNegotiationPriority(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
+                      <option value="High">High</option>
+                    </select>
                   </div>
                 </div>
 
