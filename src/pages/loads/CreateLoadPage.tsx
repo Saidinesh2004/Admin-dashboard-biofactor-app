@@ -9,6 +9,7 @@ import {
   Loader2, ArrowLeft, Send, RotateCcw, Calendar, 
   Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route
 } from 'lucide-react';
+import { useLogisticsStore } from '@/store/useStore';
 
 export default function CreateLoadPage() {
   const navigate = useNavigate();
