@@ -14,7 +14,8 @@ import {
   ChevronRight,
   TrendingUp,
   FileText,
-  UserCheck
+  UserCheck,
+  AlertTriangle
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/useStore'
 import { useProfileStore } from '@/store/profileStore'
