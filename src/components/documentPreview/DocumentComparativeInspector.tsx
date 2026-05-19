@@ -5,7 +5,7 @@ import {
   AlertTriangle, FileText, CheckCircle2, ChevronRight, X
 } from 'lucide-react';
 import { useVerificationStore } from '../../store/verificationStore';
-import { OnboardingTransporter } from '../../store/onboardingStore';
+import type { OnboardingTransporter } from '../../store/onboardingStore';
 import { Button } from '@/components/ui/button';
 
 interface DocumentComparativeInspectorProps {

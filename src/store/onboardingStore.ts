@@ -1,7 +1,9 @@
 import { create } from 'zustand';
-import { OCRExtractedData } from '../services/ocrService';
-import { validationService, ValidationReport } from '../services/validationService';
-import { useTransporterStore, TransporterProfile } from './transporterStore';
+import type { OCRExtractedData } from '../services/ocrService';
+import { validationService } from '../services/validationService';
+import type { ValidationReport } from '../services/validationService';
+import { useTransporterStore } from './transporterStore';
+import type { TransporterProfile } from './transporterStore';
 
 export interface OnboardingTransporter {
   id: string; // Temp queue ID

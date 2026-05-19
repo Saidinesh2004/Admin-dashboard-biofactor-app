@@ -12,10 +12,7 @@ import {
   Settings, 
   ChevronLeft,
   ChevronRight,
-  TrendingUp,
-  FileText,
-  UserCheck,
-  AlertTriangle
+  FileText
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/useStore'
 import { useProfileStore } from '@/store/profileStore'
@@ -30,10 +27,7 @@ const menuItems = [
     { name: "Manage Loads", icon: ClipboardList, path: "/loads" }
   ]},
   { group: "FLEET TRACKING", items: [
-    { name: "Live Tracking", icon: Truck, path: "/tracking" },
-    { name: "Driver Monitoring", icon: Users, path: "/tracking?tab=drivers" },
-    { name: "Route Intelligence", icon: TrendingUp, path: "/tracking?tab=routes" },
-    { name: "Stop Alerts", icon: AlertTriangle, path: "/tracking?tab=alerts" }
+    { name: "Live Tracking", icon: Truck, path: "/tracking" }
   ]},
   { group: "PAYMENTS", items: [
     { name: "Payments", icon: CreditCard, path: "/payments" }

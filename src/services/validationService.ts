@@ -1,4 +1,4 @@
-import { OCRExtractedData } from './ocrService';
+import type { OCRExtractedData } from './ocrService';
 
 export interface ValidationIssue {
   type: 'error' | 'warning' | 'info';

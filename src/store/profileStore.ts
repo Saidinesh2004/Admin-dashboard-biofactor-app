@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { profileService, AdminProfile } from '@/services/profileService';
+import { profileService } from '@/services/profileService';
+import type { AdminProfile } from '@/services/profileService';
 
 interface ProfileState {
   profile: AdminProfile | null;

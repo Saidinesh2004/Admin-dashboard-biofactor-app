@@ -7,7 +7,8 @@ import {
   Search, ShieldAlert, History, Users, Layers, Eye, RefreshCcw
 } from 'lucide-react';
 
-import { useOnboardingStore, OnboardingTransporter } from '../store/onboardingStore';
+import { useOnboardingStore } from '../store/onboardingStore';
+import type { OnboardingTransporter } from '../store/onboardingStore';
 import { useVerificationStore } from '../store/verificationStore';
 import { ocrService } from '../services/ocrService';
 import { AIScanningHUD } from '../components/aiVerification/AIScanningHUD';

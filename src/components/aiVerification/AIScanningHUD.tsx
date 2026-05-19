@@ -4,7 +4,8 @@ import {
   FileText, ShieldCheck, Loader2, Sparkles, 
   Layers, Search, ShieldAlert, Cpu
 } from 'lucide-react';
-import { useVerificationStore, ScanningStep } from '../../store/verificationStore';
+import { useVerificationStore } from '../../store/verificationStore';
+import type { ScanningStep } from '../../store/verificationStore';
 
 interface AIScanningHUDProps {
   fileName: string;
