@@ -150,7 +150,7 @@ export default function DashboardHome() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard 
           title="Total Loads" 
           value={stats.total} 
@@ -158,14 +158,6 @@ export default function DashboardHome() {
           trend={8} 
           trendType="up" 
           color="bg-blue-600" 
-        />
-        <KPICard 
-          title="Open Loads" 
-          value={stats.open} 
-          icon={HelpCircle} 
-          trend={15} 
-          trendType="up" 
-          color="bg-emerald-500" 
         />
         <KPICard 
           title="Assigned Loads" 
@@ -184,20 +176,12 @@ export default function DashboardHome() {
           color="bg-gray-500" 
         />
         <KPICard 
-          title="Revenue" 
+          title="Freight Revenue" 
           value={formatRevenue(stats.revenue)} 
           icon={CircleDollarSign} 
           trend={10} 
           trendType="up" 
           color="bg-green-600" 
-        />
-        <KPICard 
-          title="Active Vehicles" 
-          value={stats.activeVehicles} 
-          icon={Truck} 
-          trend={2} 
-          trendType="down" 
-          color="bg-purple-600" 
         />
       </div>
 
