@@ -358,14 +358,12 @@ export default function ManageLoads() {
       </div>
 
       {/* KPI Cards Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Loads', val: stats.total, color: 'border-l-blue-500', icon: BarChart3, bg: 'text-blue-500' },
-          { label: 'Open Loads', val: stats.open, color: 'border-l-emerald-500', icon: HelpCircle, bg: 'text-emerald-500' },
           { label: 'Assigned Loads', val: stats.assigned, color: 'border-l-blue-600', icon: Truck, bg: 'text-blue-600' },
           { label: 'Completed Loads', val: stats.completed, color: 'border-l-gray-400', icon: CheckCircle2, bg: 'text-gray-500' },
-          { label: 'Total Revenue', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600 font-mono' },
-          { label: 'Active Vehicles', val: stats.activeVehicles, color: 'border-l-indigo-500', icon: Activity, bg: 'text-indigo-500' },
+          { label: 'Freight Revenue', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600 font-mono' },
         ].map((c, i) => (
           <Card key={i} className={`border-0 border-l-4 ${c.color} shadow-sm bg-white overflow-hidden`}>
             <CardContent className="p-4 flex justify-between items-center">
