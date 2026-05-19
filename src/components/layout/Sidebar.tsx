@@ -17,6 +17,8 @@ import {
   UserCheck
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/useStore'
+import { useProfileStore } from '@/store/profileStore'
+import ProfileAvatar from '../profile/ProfileAvatar'
 
 const menuItems = [
   { group: "DASHBOARD", items: [
@@ -25,6 +27,12 @@ const menuItems = [
   { group: "LOADS", items: [
     { name: "Create Load", icon: MapPin, path: "/create-load" },
     { name: "Manage Loads", icon: ClipboardList, path: "/loads" }
+  ]},
+  { group: "FLEET TRACKING", items: [
+    { name: "Live Tracking", icon: Truck, path: "/tracking" },
+    { name: "Driver Monitoring", icon: Users, path: "/tracking?tab=drivers" },
+    { name: "Route Intelligence", icon: TrendingUp, path: "/tracking?tab=routes" },
+    { name: "Stop Alerts", icon: AlertTriangle, path: "/tracking?tab=alerts" }
   ]},
   { group: "PAYMENTS", items: [
     { name: "Payments", icon: CreditCard, path: "/payments" }
@@ -45,6 +53,7 @@ const menuItems = [
 
 const Sidebar = () => {
   const { isSidebarCollapsed, toggleSidebar } = useDashboardStore()
+  const { profile } = useProfileStore()
   const location = useLocation()
 
   return (
@@ -110,11 +119,17 @@ const Sidebar = () => {
 
       <div className="p-4 border-t border-white/10">
         <div className={cn("flex items-center gap-3", isSidebarCollapsed ? "justify-center" : "")}>
-          <div className="w-8 h-8 rounded-full bg-gray-600 flex items-center justify-center text-xs font-medium">AD</div>
+          <ProfileAvatar 
+            src={profile?.profilePhoto || ""} 
+            name={profile?.fullName || "Admin User"} 
+            size="sm" 
+            showStatus={true} 
+            isOnline={profile?.isOnline ?? true} 
+          />
           {!isSidebarCollapsed && (
-            <div className="flex flex-col">
-              <span className="text-sm font-medium">Admin User</span>
-              <span className="text-[10px] text-gray-500">Super Administrator</span>
+            <div className="flex flex-col min-w-0">
+              <span className="text-sm font-medium text-white truncate">{profile?.fullName || "Admin User"}</span>
+              <span className="text-[10px] text-gray-500 truncate uppercase font-bold tracking-wider">{profile?.role || "SUPER ADMIN"}</span>
             </div>
           )}
         </div>

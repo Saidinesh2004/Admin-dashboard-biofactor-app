@@ -1,0 +1,216 @@
+import { create } from 'zustand';
+import { OCRExtractedData } from '../services/ocrService';
+import { validationService, ValidationReport } from '../services/validationService';
+import { useTransporterStore, TransporterProfile } from './transporterStore';
+
+export interface OnboardingTransporter {
+  id: string; // Temp queue ID
+  data: OCRExtractedData;
+  report: ValidationReport;
+  uploadedAt: string;
+  sourceFile: string;
+}
+
+export interface UploadHistory {
+  id: string;
+  fileName: string;
+  fileSize: string;
+  uploadDate: string;
+  totalRecords: number;
+  verified: number;
+  rejected: number;
+  pendingReview: number;
+}
+
+interface OnboardingState {
+  onboardingQueue: OnboardingTransporter[];
+  uploadHistory: UploadHistory[];
+  isProcessing: boolean;
+  activeFilter: 'ALL' | 'AI_VERIFIED' | 'NEEDS_REVIEW' | 'REJECTED' | 'DUPLICATES';
+  
+  setProcessing: (isProcessing: boolean) => void;
+  setActiveFilter: (filter: 'ALL' | 'AI_VERIFIED' | 'NEEDS_REVIEW' | 'REJECTED' | 'DUPLICATES') => void;
+  addOnboardingBatch: (fileName: string, fileSize: string, extracted: OCRExtractedData[]) => void;
+  updateQueueRecord: (tempId: string, updates: Partial<OCRExtractedData>) => void;
+  deleteQueueRecord: (tempId: string) => void;
+  approveQueueRecord: (tempId: string) => void;
+  rejectQueueRecord: (tempId: string, reason: string) => void;
+  submitAllVerified: () => number;
+}
+
+export const useOnboardingStore = create<OnboardingState>((set, get) => ({
+  onboardingQueue: [],
+  uploadHistory: [
+    {
+      id: 'BIMP-9021',
+      fileName: 'north_zone_carriers.xlsx',
+      fileSize: '242 KB',
+      uploadDate: '2026-05-18 14:22',
+      totalRecords: 4,
+      verified: 2,
+      rejected: 1,
+      pendingReview: 1
+    },
+    {
+      id: 'BIMP-9022',
+      fileName: 'delhi_fleet_onboard.pdf',
+      fileSize: '1.2 MB',
+      uploadDate: '2026-05-17 10:15',
+      totalRecords: 1,
+      verified: 1,
+      rejected: 0,
+      pendingReview: 0
+    }
+  ],
+  isProcessing: false,
+  activeFilter: 'ALL',
+
+  setProcessing: (isProcessing) => set({ isProcessing }),
+  setActiveFilter: (activeFilter) => set({ activeFilter }),
+
+  addOnboardingBatch: (fileName, fileSize, extracted) => {
+    const existingCarriers = useTransporterStore.getState().transporters;
+    const batchId = `BIMP-${Math.floor(1000 + Math.random() * 9000)}`;
+    const todayStr = new Date().toISOString().replace('T', ' ').substring(0, 16);
+
+    const newEntries: OnboardingTransporter[] = extracted.map((data, index) => {
+      // Run AI verification instantly
+      const report = validationService.verifyDocumentsAI(data, existingCarriers);
+      return {
+        id: `TEMP-${batchId}-${index}`,
+        data,
+        report,
+        uploadedAt: todayStr,
+        sourceFile: fileName
+      };
+    });
+
+    const total = newEntries.length;
+    const verified = newEntries.filter(e => e.report.status === 'AI Verified').length;
+    const rejected = newEntries.filter(e => e.report.status === 'Rejected').length;
+    const pendingReview = total - verified - rejected;
+
+    const newHistory: UploadHistory = {
+      id: batchId,
+      fileName,
+      fileSize,
+      uploadDate: todayStr,
+      totalRecords: total,
+      verified,
+      rejected,
+      pendingReview
+    };
+
+    set({
+      onboardingQueue: [...newEntries, ...get().onboardingQueue],
+      uploadHistory: [newHistory, ...get().uploadHistory]
+    });
+  },
+
+  updateQueueRecord: (tempId, updates) => {
+    const existingCarriers = useTransporterStore.getState().transporters;
+    
+    set({
+      onboardingQueue: get().onboardingQueue.map(item => {
+        if (item.id === tempId) {
+          const updatedData = { ...item.data, ...updates };
+          // Re-verify the document details instantly
+          const report = validationService.verifyDocumentsAI(updatedData, existingCarriers);
+          return {
+            ...item,
+            data: updatedData,
+            report
+          };
+        }
+        return item;
+      })
+    });
+  },
+
+  deleteQueueRecord: (tempId) => {
+    set({
+      onboardingQueue: get().onboardingQueue.filter(item => item.id !== tempId)
+    });
+  },
+
+  approveQueueRecord: (tempId) => {
+    const record = get().onboardingQueue.find(item => item.id === tempId);
+    if (!record) return;
+
+    // Package into actual TransporterProfile format
+    const transporterId = `TR-${Math.floor(1000 + Math.random() * 9000)}`;
+    const newProfile: TransporterProfile = {
+      id: transporterId,
+      ownerName: record.data.ownerName,
+      companyName: record.data.companyName,
+      mobile: record.data.mobile,
+      whatsapp: record.data.whatsapp,
+      email: record.data.email,
+      address: record.data.address,
+      city: record.data.city,
+      district: record.data.city, // Default district to city
+      state: record.data.state,
+      fleetSize: record.data.fleetSize,
+      preferredRoutes: [record.data.state + " Local", "Interstate Core Routes"],
+      vehicleTypes: ["Container Truck", "Open Body Truck"],
+      panNumber: record.data.panNumber,
+      gstNumber: record.data.gstNumber,
+      bankName: record.data.bankName || "SBI Bank",
+      bankAccount: record.data.bankAccount || "3940182903",
+      ifsc: record.data.ifsc || "SBIN0004920",
+      upiId: `${record.data.mobile.replace(/\D/g, '')}@upi`,
+      status: 'Approved',
+      documents: {
+        aadhaar: { status: 'Verified', remarks: 'UIDAI Authenticated by AI', fileUrl: record.data.aadhaarUrl || 'https://images.unsplash.com/photo-1554415707-6e8cfc93fe23?w=800' },
+        panCard: { status: 'Verified', remarks: 'NSDL Validated on Onboarding', fileUrl: record.data.panUrl || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800' },
+        gstCert: { status: 'Verified', remarks: 'GSTIN Portal Active Check', fileUrl: record.data.gstUrl || 'https://images.unsplash.com/photo-1568605117036-5fe5e7bab0b7?w=800' },
+        cancelledCheque: { status: 'Verified', remarks: 'IFS Verification Ok', fileUrl: record.data.chequeUrl || 'https://images.unsplash.com/photo-1590283603385-17ffb3a7f29f?w=800' },
+        vehicleRc: { status: 'Verified', remarks: 'Vahan DB Verified', fileUrl: record.data.rcUrl || 'https://images.unsplash.com/photo-1508962914676-134849a727f0?w=800', expiryDate: record.data.rcExpiry },
+        insurance: { status: 'Verified', remarks: 'Insurance Premium Checked', fileUrl: record.data.insuranceUrl || 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=800', expiryDate: record.data.insuranceExpiry },
+        fitnessCert: { status: 'Verified', remarks: 'AI Document Scanned', fileUrl: 'https://images.unsplash.com/photo-1517245386807-bb43f82c33c4?w=800' },
+        pollutionCert: { status: 'Verified', remarks: 'PUC Checked', fileUrl: 'https://images.unsplash.com/photo-1530521951940-ad08c2873af7?w=800' },
+        drivingLicense: { status: 'Verified', remarks: 'DL Matches Owner Name', fileUrl: 'https://images.unsplash.com/photo-1580828343064-fde4fc206bc6?w=800' },
+        vehiclePhotos: { status: 'Verified', remarks: 'Validated', fileUrl: 'https://images.unsplash.com/photo-1601584115197-04ecc0da31d7?w=800' }
+      }
+    };
+
+    // 1. Add to central transporter store
+    useTransporterStore.getState().addTransporter(newProfile);
+
+    // 2. Remove from onboarding queue
+    set({
+      onboardingQueue: get().onboardingQueue.filter(item => item.id !== tempId)
+    });
+  },
+
+  rejectQueueRecord: (tempId, reason) => {
+    set({
+      onboardingQueue: get().onboardingQueue.map(item => {
+        if (item.id === tempId) {
+          return {
+            ...item,
+            report: {
+              ...item.report,
+              status: 'Rejected',
+              isAutoRejected: true,
+              rejectionReason: reason,
+              score: 20
+            }
+          };
+        }
+        return item;
+      })
+    });
+  },
+
+  submitAllVerified: () => {
+    const verifiedRecords = get().onboardingQueue.filter(item => item.report.status === 'AI Verified');
+    const count = verifiedRecords.length;
+
+    verifiedRecords.forEach(record => {
+      get().approveQueueRecord(record.id);
+    });
+
+    return count;
+  }
+}));
