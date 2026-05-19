@@ -13,7 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useTrackingStore, type VehicleTrip, type LiveAlert, injectToastHook } from '@/store/trackingStore';
+import { useTrackingStore, type VehicleTrip, type LiveAlert, injectToastHook, type TripStatus } from '@/store/trackingStore';
 import { calculateDistance } from '@/services/gpsService';
 
 declare global {
@@ -282,10 +282,10 @@ export default function LiveFleetTrackingPage() {
 
   // Calculations for stats
   const stats = useMemo(() => {
-    const active = trips.filter(t => t.status !== 'Completed' && t.status !== 'Offline').length;
+    const active = trips.filter(t => (t.status as string) !== 'Completed' && t.status !== 'Offline').length;
     const delayed = trips.filter(t => t.status === 'Delayed').length;
     const idle = trips.filter(t => t.status === 'Idle').length;
-    const completed = trips.filter(t => t.status === 'Completed').length;
+    const completed = trips.filter(t => (t.status as string) === 'Completed' || t.eta === 'Arrived at Destination').length;
     const offline = trips.filter(t => t.status === 'Offline').length;
     const deviations = trips.filter(t => t.deviationAlert).length;
 
