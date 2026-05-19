@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TripStatus = 'In Transit' | 'Loading' | 'Unloading' | 'Delayed' | 'Idle' | 'Completed' | 'Offline';
+export type TripStatus = 'Moving' | 'Stopped' | 'Idle' | 'Offline' | 'Delayed';
 
 export interface LatLng {
   lat: number;
@@ -120,13 +120,12 @@ export const useTrackingStore = create<TrackingState>((set) => ({
       driverName: 'Suresh Khanna',
       driverPhone: '+91 98765 43210',
       transporter: 'Delhi Roadlines',
-      status: 'In Transit',
+      status: 'Moving',
       speed: 68,
       eta: '2h 15m',
       origin: { name: 'Azadpur Plant, Delhi', lat: 28.7159, lng: 77.1694 },
       destination: { name: 'Bhiwandi Depot, Mumbai', lat: 19.2813, lng: 73.0483 },
       currentIndex: 0,
-      // Dynamic route coordinate steps between Delhi and Mumbai
       routeCoords: [
         { lat: 28.7159, lng: 77.1694 }, // Delhi
         { lat: 26.9124, lng: 75.7873 }, // Jaipur
@@ -174,7 +173,7 @@ export const useTrackingStore = create<TrackingState>((set) => ({
         { lat: 19.0760, lng: 72.8777 }, // Mumbai
         { lat: 18.6298, lng: 73.7997 }  // Pune
       ],
-      currentCoords: { lat: 20.3893, lng: 72.9099 }, // Stopped off-route
+      currentCoords: { lat: 20.3893, lng: 72.9099 },
       stops: [
         { name: 'Surat Bypass Toll plaza', duration: '20 mins', lat: 21.1702, lng: 72.8311, idle: false, engineOff: false },
         { name: 'Unauthorized Vapi Hub stop', duration: '1h 10m', lat: 20.3893, lng: 72.9099, idle: true, engineOff: true }
@@ -265,6 +264,41 @@ export const useTrackingStore = create<TrackingState>((set) => ({
         { name: 'Panki Plant Zone', radius: 1000, lat: 26.4499, lng: 80.2078, inside: false },
         { name: 'Dankuni Depot Zone', radius: 1500, lat: 22.6800, lng: 88.3000, inside: false }
       ]
+    },
+    {
+      id: 'TRIP-705',
+      vehicleNumber: 'MH-12-PQ-9988',
+      driverName: 'Anil Deshmukh',
+      driverPhone: '+91 91234 88990',
+      transporter: 'Sahyadri Roadlines',
+      status: 'Stopped',
+      speed: 0,
+      eta: 'Arrived at Destination',
+      origin: { name: 'Panki Plant, Kanpur', lat: 26.4499, lng: 80.2078 },
+      destination: { name: 'Dankuni Depot, Kolkata', lat: 22.6800, lng: 88.3000 },
+      currentIndex: 3,
+      routeCoords: [
+        { lat: 26.4499, lng: 80.2078 },
+        { lat: 25.3176, lng: 82.9739 },
+        { lat: 23.7957, lng: 86.4304 },
+        { lat: 22.6800, lng: 88.3000 }
+      ],
+      currentCoords: { lat: 22.6800, lng: 88.3000 },
+      stops: [
+        { name: 'Kolkata Depot Gate Stop', duration: '2h 15m', lat: 22.6800, lng: 88.3000, idle: false, engineOff: true }
+      ],
+      fuel: 12,
+      lastUpdated: '10 mins ago',
+      timeline: [
+        { time: 'Yesterday', event: 'Left Panki Plant, Kanpur', status: 'success' },
+        { time: '09:00 AM', event: 'Reached Dankuni Depot destination', status: 'success' }
+      ],
+      deviationAlert: false,
+      unauthorizedStop: false,
+      idleTime: '2h 15m',
+      geofences: [
+        { name: 'Dankuni Depot Zone', radius: 1500, lat: 22.6800, lng: 88.3000, inside: true }
+      ]
     }
   ],
   setSelectedTripId: (id) => set({ selectedTripId: id }),
@@ -313,8 +347,7 @@ export const useTrackingStore = create<TrackingState>((set) => ({
   })),
   simulateGpsMovement: () => set((state) => {
     const updatedTrips = state.trips.map((trip) => {
-      // Simulate movement for 'In Transit' vehicles
-      if (trip.status === 'In Transit') {
+      if (trip.status === 'Moving') {
         const nextIndex = (trip.currentIndex + 1) % trip.routeCoords.length;
         const nextCoords = trip.routeCoords[nextIndex];
         

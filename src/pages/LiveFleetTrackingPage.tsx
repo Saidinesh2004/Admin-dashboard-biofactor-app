@@ -66,9 +66,9 @@ export default function LiveFleetTrackingPage() {
     if (initialTab === 'alerts') {
       setStatusFilter('Delayed');
     } else if (initialTab === 'drivers') {
-      setStatusFilter('In Transit');
+      setStatusFilter('Moving');
     } else if (initialTab === 'routes') {
-      setStatusFilter('In Transit');
+      setStatusFilter('Moving');
     }
   }, [initialTab, setStatusFilter]);
 
@@ -145,10 +145,11 @@ export default function LiveFleetTrackingPage() {
     trips.forEach((trip) => {
       const { id, currentCoords, vehicleNumber, status, transporter, driverName } = trip;
       const statusColor = 
-        status === 'In Transit' ? '#10b981' :
+        status === 'Moving' ? '#10b981' :
+        status === 'Stopped' ? '#64748b' :
         status === 'Delayed' ? '#f43f5e' :
         status === 'Idle' ? '#f59e0b' :
-        status === 'Offline' ? '#64748b' : '#3b82f6';
+        status === 'Offline' ? '#94a3b8' : '#3b82f6';
 
       // 1. UPDATE VEHICLE MARKERS
       if (markersRef.current[id]) {
@@ -311,13 +312,11 @@ export default function LiveFleetTrackingPage() {
 
   const getStatusBadge = (status: TripStatus) => {
     switch (status) {
-      case 'In Transit': return <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200">In Transit</Badge>;
-      case 'Delayed': return <Badge className="bg-rose-50 text-rose-700 border border-rose-200 animate-pulse">Delayed</Badge>;
+      case 'Moving': return <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-200 animate-pulse">Moving</Badge>;
+      case 'Stopped': return <Badge className="bg-slate-50 text-slate-500 border border-slate-200">Stopped</Badge>;
+      case 'Delayed': return <Badge className="bg-rose-50 text-rose-700 border border-rose-200">Delayed</Badge>;
       case 'Idle': return <Badge className="bg-amber-50 text-amber-700 border border-amber-200">Idle</Badge>;
-      case 'Offline': return <Badge className="bg-slate-50 text-slate-500 border border-slate-200">Offline</Badge>;
-      case 'Loading': return <Badge className="bg-blue-50 text-blue-700 border border-blue-200">Loading</Badge>;
-      case 'Unloading': return <Badge className="bg-violet-50 text-violet-700 border border-violet-200">Unloading</Badge>;
-      case 'Completed': return <Badge className="bg-emerald-100 text-emerald-800 border-none">Completed</Badge>;
+      case 'Offline': return <Badge className="bg-slate-100 text-slate-400 border border-slate-200">Offline</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -539,7 +538,8 @@ export default function LiveFleetTrackingPage() {
               className="flex h-8 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs outline-none focus:ring-1 focus:ring-primary text-slate-600"
             >
               <option value="All">All Statuses</option>
-              <option value="In Transit">In Transit</option>
+              <option value="Moving">Moving</option>
+              <option value="Stopped">Stopped</option>
               <option value="Delayed">Delayed</option>
               <option value="Idle">Idle</option>
               <option value="Offline">Offline</option>
