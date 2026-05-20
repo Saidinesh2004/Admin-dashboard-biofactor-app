@@ -38,6 +38,8 @@ export interface Load {
   ratePerTonne: number;
   totalFreight: number;
   dispatchDate: string;
+  endDate?: string;
+  endTime?: string;
   status: 'Open' | 'Assigned & Dispatched' | 'Negotiation In Progress' | 'Awaiting New Bids' | 'Completed';
   createdAt: number;
   bids?: Bid[];

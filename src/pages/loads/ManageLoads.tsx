@@ -5,7 +5,7 @@ import {
   Search, Filter, Download, Plus, Eye, Edit, Trash2, ArrowRight,
   MapPin, Calendar, Weight, CircleDollarSign, Truck, CheckCircle2,
   Clock, X, BarChart3, TrendingUp, HelpCircle, Star, ShieldCheck, 
-  Award, Sparkles, Activity, FileSpreadsheet, ChevronRight, AlertTriangle,
+  Award, Sparkles, FileSpreadsheet, ChevronRight, AlertTriangle,
   Coins, MessageSquare, Building2
 } from 'lucide-react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -20,7 +20,7 @@ import { exportToExcel } from '@/utils/exportCsv';
 
 export default function ManageLoads() {
   const { toast } = useToast();
-  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, simulateNewBid } = useLoadStore();
+  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads } = useLoadStore();
   
   // Filtering & Search for Main Table
   const [search, setSearch] = useState('');
@@ -31,10 +31,27 @@ export default function ManageLoads() {
   const [editingLoad, setEditingLoad] = useState<Load | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
-  // Active Bidding/Simulation States inside Drawer
-  const [isSimulating, setIsSimulating] = useState(false);
+  // Active Bidding States inside Drawer
   const [bidSearch, setBidSearch] = useState('');
-  const [bidFilter, setBidFilter] = useState<'Cheapest' | 'Highest Rated' | 'Fastest ETA' | 'Verified Only'>('Cheapest');
+  const [bidSort, setBidSort] = useState<'asc' | 'desc'>('asc');
+
+  // Auto-close expired loads on mount and every 60 seconds
+  useEffect(() => {
+    const checkAndClose = () => {
+      const closedCount = autoCloseExpiredLoads();
+      if (closedCount > 0) {
+        toast({
+          title: `${closedCount} Load${closedCount > 1 ? 's' : ''} Auto-Closed`,
+          description: `${closedCount} load${closedCount > 1 ? 's have' : ' has'} passed their dispatch deadline and been marked as Completed.`,
+          className: 'bg-slate-800 text-white border-none'
+        });
+      }
+    };
+
+    checkAndClose(); // Run immediately on mount
+    const interval = setInterval(checkAndClose, 60000); // Re-check every 60s
+    return () => clearInterval(interval);
+  }, []);
 
   // Nested Modals State inside Drawer
   const [negotiatingBid, setNegotiatingBid] = useState<{ loadId: string; bid: Bid } | null>(null);
@@ -63,34 +80,7 @@ export default function ManageLoads() {
     return loads.find(l => l.id === selectedLoadId) || null;
   }, [loads, selectedLoadId]);
 
-  // Live Bid Simulation Interval
-  useEffect(() => {
-    if (!isSimulating || !selectedLoadId) return;
-
-    const interval = setInterval(() => {
-      const currentLoad = useLoadStore.getState().loads.find(l => l.id === selectedLoadId);
-      if (currentLoad && currentLoad.status === 'Open') {
-        simulateNewBid(selectedLoadId);
-        
-        // Retrieve the newly updated cheapest bid for the toast alert
-        const updatedLoad = useLoadStore.getState().loads.find(l => l.id === selectedLoadId);
-        if (updatedLoad && updatedLoad.bids) {
-          const cheapest = updatedLoad.bids[0];
-          toast({
-            title: "Live Bid Received!",
-            description: `${cheapest.transporterName} submitted a competitive rate of ₹${cheapest.bidAmount.toLocaleString('en-IN')}`,
-            className: "bg-green-600 text-white border-none shadow-lg font-semibold animate-pulse"
-          });
-        }
-      } else {
-        setIsSimulating(false);
-      }
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [isSimulating, selectedLoadId]);
-
-  // Dynamic Search & Filter Logic for Bids inside Drawer
+  // Dynamic Search & Sort Logic for Bids inside Drawer
   const filteredBids = useMemo(() => {
     if (!selectedLoad || !selectedLoad.bids) return [];
     
@@ -105,23 +95,11 @@ export default function ManageLoads() {
       );
     }
     
-    // Sorting & Filters
-    if (bidFilter === 'Cheapest') {
-      list.sort((a, b) => a.bidAmount - b.bidAmount);
-    } else if (bidFilter === 'Highest Rated') {
-      list.sort((a, b) => b.driverRating - a.driverRating);
-    } else if (bidFilter === 'Fastest ETA') {
-      list.sort((a, b) => {
-        const valA = parseInt(a.eta) || 999;
-        const valB = parseInt(b.eta) || 999;
-        return valA - valB;
-      });
-    } else if (bidFilter === 'Verified Only') {
-      list = list.filter(b => b.verificationStatus.includes('Trusted Transporter') || b.verificationStatus.includes('KYC Verified'));
-    }
+    // Sort by Bid Amount: Ascending or Descending
+    list.sort((a, b) => bidSort === 'asc' ? a.bidAmount - b.bidAmount : b.bidAmount - a.bidAmount);
     
     return list;
-  }, [selectedLoad, bidSearch, bidFilter]);
+  }, [selectedLoad, bidSearch, bidSort]);
 
   // Dynamic Search & Filter Logic for Main Table
   const filteredLoads = useMemo(() => {
@@ -213,7 +191,6 @@ export default function ManageLoads() {
       'Vehicle Type': b.vehicleType,
       'Bid Amount (INR)': b.bidAmount,
       'Rate/Tonne': b.pricePerTonne,
-      'ETA': b.eta,
       'Rating': b.driverRating,
       'Experience (Years)': b.experienceYears,
       'Verification Status': b.verificationStatus.join(', '),
@@ -363,7 +340,7 @@ export default function ManageLoads() {
           { label: 'Total Loads', val: stats.total, color: 'border-l-blue-500', icon: BarChart3, bg: 'text-blue-500' },
           { label: 'Assigned Loads', val: stats.assigned, color: 'border-l-blue-600', icon: Truck, bg: 'text-blue-600' },
           { label: 'Completed Loads', val: stats.completed, color: 'border-l-gray-400', icon: CheckCircle2, bg: 'text-gray-500' },
-          { label: 'Freight Revenue', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600 font-mono' },
+          { label: 'Money Spend', val: formatRevenue(stats.revenue), color: 'border-l-green-600', icon: CircleDollarSign, bg: 'text-green-600 font-mono' },
         ].map((c, i) => (
           <Card key={i} className={`border-0 border-l-4 ${c.color} shadow-sm bg-white overflow-hidden`}>
             <CardContent className="p-4 flex justify-between items-center">
@@ -419,9 +396,9 @@ export default function ManageLoads() {
               <TableRow className="border-b border-gray-100 hover:bg-transparent">
                 <TableHead className="font-bold text-gray-600">Load ID</TableHead>
                 <TableHead className="font-bold text-gray-600">Route & Stops</TableHead>
-                <TableHead className="font-bold text-gray-600">Cargo & Weight</TableHead>
-                <TableHead className="font-bold text-gray-600">Base Rate</TableHead>
-                <TableHead className="font-bold text-gray-600">Freight Value</TableHead>
+                <TableHead className="font-bold text-gray-600">Tonnes</TableHead>
+                <TableHead className="font-bold text-gray-600">Rate/Tonne</TableHead>
+                <TableHead className="font-bold text-gray-600">Estimated Value</TableHead>
                 <TableHead className="font-bold text-gray-600">Dispatch Date</TableHead>
                 <TableHead className="font-bold text-gray-600">Status</TableHead>
                 <TableHead className="font-bold text-gray-600 text-right">Actions</TableHead>
@@ -440,7 +417,7 @@ export default function ManageLoads() {
                     onClick={() => setSelectedLoadId(load.id)}
                   >
                     <TableCell className="font-bold text-sm text-green-700">
-                      {load.id}
+                      {load.bidId}
                     </TableCell>
                     <TableCell className="max-w-xs">
                       <div className="flex flex-wrap items-center gap-1.5">
@@ -456,10 +433,7 @@ export default function ManageLoads() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <div className="flex flex-col">
-                        <span className="text-sm font-semibold text-gray-800">{load.product}</span>
-                        <span className="text-[10px] text-gray-500 font-medium flex items-center gap-1"><Weight size={10}/> {load.tonnes} Tonnes</span>
-                      </div>
+                      <span className="text-sm font-semibold text-gray-800 flex items-center gap-1"><Weight size={13}/> {load.tonnes} Tonnes</span>
                     </TableCell>
                     <TableCell className="font-bold text-sm text-gray-700">₹{load.ratePerTonne.toLocaleString('en-IN')}/T</TableCell>
                     <TableCell className="font-bold text-sm text-green-700">
@@ -547,19 +521,6 @@ export default function ManageLoads() {
                 </div>
                 
                 <div className="flex items-center gap-3">
-                  {selectedLoad.status !== 'Assigned & Dispatched' && selectedLoad.status !== 'Completed' && (
-                    <Button 
-                      onClick={() => setIsSimulating(!isSimulating)}
-                      className={`gap-2 h-9 px-4 font-bold text-xs uppercase transition-all tracking-wider ${
-                        isSimulating 
-                          ? 'bg-amber-600 hover:bg-amber-700 text-white animate-pulse' 
-                          : 'bg-green-600 hover:bg-green-700 text-white'
-                      }`}
-                    >
-                      <Activity size={14} className={isSimulating ? "animate-spin" : ""} />
-                      {isSimulating ? "Simulation Active" : "Simulate Live Bids"}
-                    </Button>
-                  )}
                   <Button variant="ghost" size="icon" onClick={() => setSelectedLoadId(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-700/50">
                     <X size={18} />
                   </Button>
@@ -729,7 +690,7 @@ export default function ManageLoads() {
                       <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
                         Top 7 Competitive Bids <Badge className="bg-green-600 text-white font-mono">{filteredBids.length}</Badge>
                       </h3>
-                      <p className="text-xs text-slate-400">Competitive carrier quotes sorted by lowest freight price first.</p>
+                      <p className="text-xs text-slate-400">Sort carrier quotes by bid amount in ascending or descending order.</p>
                     </div>
 
                     <div className="flex flex-col sm:flex-row gap-2">
@@ -743,20 +704,26 @@ export default function ManageLoads() {
                         />
                       </div>
                       
-                      <div className="flex items-center gap-1 bg-slate-200/50 p-1 border rounded-lg">
-                        {['Cheapest', 'Highest Rated', 'Fastest ETA', 'Verified Only'].map((opt) => (
-                          <button
-                            key={opt}
-                            onClick={() => setBidFilter(opt as any)}
-                            className={`text-xs px-2.5 py-1 rounded-md font-semibold transition-all ${
-                              bidFilter === opt 
-                                ? 'bg-white text-slate-800 shadow-xs' 
-                                : 'text-slate-400 hover:text-slate-600'
-                            }`}
-                          >
-                            {opt}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-2 bg-slate-100 p-1 border border-slate-200 rounded-lg">
+                        <div className="flex items-center gap-1.5 px-2 text-slate-500 border-r border-slate-300">
+                          <Filter size={14} />
+                          <span className="text-xs font-bold uppercase tracking-wider">Filter</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {(['asc', 'desc'] as const).map((opt) => (
+                            <button
+                              key={opt}
+                              onClick={() => setBidSort(opt)}
+                              className={`text-xs px-3 py-1.5 rounded-md font-semibold transition-all flex items-center gap-1.5 ${
+                                bidSort === opt 
+                                  ? 'bg-white text-slate-800 shadow-sm border border-slate-200' 
+                                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-200/50'
+                              }`}
+                            >
+                              {opt === 'asc' ? 'Low to High' : 'High to Low'}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -772,7 +739,6 @@ export default function ManageLoads() {
                             <TableHead className="font-bold text-slate-600 text-xs">Vehicle Type</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Bid Amount</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Rate / T</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">ETA</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Rating</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Verification</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Status</TableHead>
@@ -832,10 +798,6 @@ export default function ManageLoads() {
                                   ₹{bid.pricePerTonne}/T
                                 </TableCell>
 
-                                {/* ETA */}
-                                <TableCell className="text-xs font-semibold text-slate-700">
-                                  <span className="flex items-center gap-1.5"><Clock size={12} className="text-slate-400" /> {bid.eta}</span>
-                                </TableCell>
 
                                 {/* Rating */}
                                 <TableCell>
@@ -1005,34 +967,17 @@ export default function ManageLoads() {
                 </Button>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Product Type</label>
-                  <select
-                    value={editForm.product}
-                    onChange={e => setEditForm(prev => ({ ...prev, product: e.target.value }))}
-                    className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm shadow-sm outline-none focus:ring-2 focus:ring-green-500"
-                  >
-                    <option value="Rice">Rice</option>
-                    <option value="Wheat">Wheat</option>
-                    <option value="Oranges">Oranges</option>
-                    <option value="Sugar">Sugar</option>
-                    <option value="Cement">Cement</option>
-                    <option value="Steel">Steel</option>
-                    <option value="Chemicals">Chemicals</option>
-                  </select>
-                </div>
 
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Dispatch Date</label>
-                  <Input 
-                    type="date"
-                    value={editForm.dispatchDate}
-                    onChange={e => setEditForm(prev => ({ ...prev, dispatchDate: e.target.value }))}
-                    className="border-gray-200 shadow-sm"
-                  />
-                </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-gray-500 uppercase">Dispatch Date</label>
+                <Input 
+                  type="date"
+                  value={editForm.dispatchDate}
+                  onChange={e => setEditForm(prev => ({ ...prev, dispatchDate: e.target.value }))}
+                  className="border-gray-200 shadow-sm"
+                />
               </div>
+
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
@@ -1071,7 +1016,7 @@ export default function ManageLoads() {
 
               {/* Real-time freight calculation preview */}
               <div className="bg-gray-50 p-4 rounded-xl border border-gray-100 flex items-center justify-between">
-                <span className="text-xs font-bold text-gray-500 uppercase">Updated Freight Value</span>
+                <span className="text-xs font-bold text-gray-500 uppercase">Updated Estimated Value</span>
                 <span className="text-lg font-bold text-green-700 font-mono">
                   ₹ {(editForm.tonnes * editForm.ratePerTonne).toLocaleString('en-IN')}
                 </span>

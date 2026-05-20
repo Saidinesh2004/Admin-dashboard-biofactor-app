@@ -45,8 +45,6 @@ const kpiMetrics = [
   { title: 'Total Loads', value: '1,248', icon: Truck, trend: '+8%', color: 'text-blue-600', bg: 'bg-blue-100' },
   { title: 'Active Transporters', value: '342', icon: Users, trend: '+12%', color: 'text-purple-600', bg: 'bg-purple-100' },
   { title: 'Delayed Deliveries', value: '24', icon: Clock, trend: '-5%', color: 'text-orange-600', bg: 'bg-orange-100' },
-  { title: 'POD Pending', value: '156', icon: FileCheck, trend: '-2%', color: 'text-red-600', bg: 'bg-red-100' },
-  { title: 'Total Freight Cost', value: '₹ 32.5L', icon: IndianRupee, trend: '+10%', color: 'text-teal-600', bg: 'bg-teal-100' },
 ];
 
 const Reports = () => {
@@ -160,7 +158,7 @@ const Reports = () => {
         </div>
 
         {/* KPI Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-4">
           {kpiMetrics.map((kpi, idx) => (
             <motion.div 
               key={idx}

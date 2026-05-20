@@ -82,6 +82,7 @@ interface LoadState {
   negotiateBid: (loadId: string, bidId: string, counterOffer: number, remarks: string, validTill: string, priority: string) => void;
   assignVehicle: (loadId: string, vehicleNo: string, driverName: string) => void;
   simulateNewBid: (loadId: string) => void;
+  autoCloseExpiredLoads: () => number; // returns count of auto-closed loads
 }
 
 const getInitialLoads = (): Load[] => {
@@ -318,5 +319,34 @@ export const useLoadStore = create<LoadState>((set, get) => ({
 
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+  },
+
+  autoCloseExpiredLoads: () => {
+    const now = new Date();
+    let closedCount = 0;
+
+    const updatedLoads = get().loads.map(load => {
+      // Only auto-close loads that are still open and have a deadline
+      if (load.status !== 'Open') return load;
+      if (!load.dispatchDate) return load;
+
+      // Build deadline: use dispatchDate + endTime if available, else end of dispatch day
+      const timeStr = load.endTime || '23:59';
+      const deadlineStr = `${load.dispatchDate}T${timeStr}`;
+      const deadline = new Date(deadlineStr);
+
+      if (!isNaN(deadline.getTime()) && now >= deadline) {
+        closedCount++;
+        return { ...load, status: 'Completed' as const };
+      }
+      return load;
+    });
+
+    if (closedCount > 0) {
+      set({ loads: updatedLoads });
+      loadService.saveLoads(updatedLoads);
+    }
+
+    return closedCount;
   }
 }));

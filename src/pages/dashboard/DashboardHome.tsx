@@ -176,7 +176,7 @@ export default function DashboardHome() {
           color="bg-gray-500" 
         />
         <KPICard 
-          title="Freight Revenue" 
+          title="Money Spend" 
           value={formatRevenue(stats.revenue)} 
           icon={CircleDollarSign} 
           trend={10} 
@@ -190,7 +190,7 @@ export default function DashboardHome() {
         <Card className="lg:col-span-2 border-none shadow-sm overflow-hidden bg-white">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
-              <CardTitle>Loads vs Freight Revenue</CardTitle>
+              <CardTitle>Loads vs Money Spend</CardTitle>
               <CardDescription>Weekly dispatch logistics and freight billing overview</CardDescription>
             </div>
             <Tabs defaultValue="7days" className="w-[200px]">

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { 
   Loader2, ArrowLeft, Send, RotateCcw, Calendar, 
-  Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route, Package
+  Weight, CircleDollarSign, Plus, Trash2, ArrowRight, Route, Package, Clock
 } from 'lucide-react';
 import { useLoadStore } from '@/store/loadStore';
 
@@ -23,6 +23,8 @@ export default function CreateLoadPage() {
     stops: [] as string[],
     toLocation: '',
     dispatchDate: '',
+    endDate: '',
+    endTime: '',
     tonnes: '',
     costPerTonne: '',
     product: 'Rice'
@@ -75,6 +77,8 @@ export default function CreateLoadPage() {
     if (!formData.fromLocation.trim()) newErrors.fromLocation = 'From Location is required';
     if (!formData.toLocation.trim()) newErrors.toLocation = 'To Location is required';
     if (!formData.dispatchDate) newErrors.dispatchDate = 'Dispatch Date is required';
+    if (!formData.endDate) newErrors.endDate = 'End Date is required';
+    if (!formData.endTime) newErrors.endTime = 'End Time is required';
     if (!formData.tonnes || parseFloat(formData.tonnes) <= 0) newErrors.tonnes = 'Enter a valid number of tonnes';
     if (!formData.costPerTonne || parseFloat(formData.costPerTonne) <= 0) newErrors.costPerTonne = 'Enter a valid cost per tonne';
     
@@ -118,6 +122,8 @@ export default function CreateLoadPage() {
         ratePerTonne: parseFloat(formData.costPerTonne),
         totalFreight: totalFreight,
         dispatchDate: formData.dispatchDate,
+        endDate: formData.endDate,
+        endTime: formData.endTime,
         status: 'Open' as const,
         createdAt: Date.now()
       };
@@ -126,7 +132,7 @@ export default function CreateLoadPage() {
       
       toast({
         title: "Success",
-        description: "Load published successfully.",
+        description: "Bid published successfully.",
         variant: "default",
         className: "bg-green-600 text-white border-none",
       });
@@ -143,6 +149,8 @@ export default function CreateLoadPage() {
       stops: [],
       toLocation: '',
       dispatchDate: '',
+      endDate: '',
+      endTime: '',
       tonnes: '',
       costPerTonne: '',
       product: 'Rice'
@@ -297,7 +305,7 @@ export default function CreateLoadPage() {
                   <div className="space-y-5">
                     {/* Reference ID */}
                     <div className="space-y-1.5">
-                      <label className="text-xs font-bold text-gray-600 uppercase">Reference ID</label>
+                      <label className="text-xs font-bold text-gray-600 uppercase">Load ID</label>
                       <Input 
                         name="bidId"
                         value={formData.bidId}
@@ -306,20 +314,54 @@ export default function CreateLoadPage() {
                       />
                     </div>
 
-                    {/* Dispatch Date */}
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Dispatch Date */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                          Dispatch Date <span className="text-red-500">*</span>
+                        </label>
+                        <Input 
+                          type="date"
+                          name="dispatchDate"
+                          value={formData.dispatchDate}
+                          onChange={handleChange}
+                          className={`bg-white border-gray-200 shadow-sm ${errors.dispatchDate ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
+                        />
+                        {errors.dispatchDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.dispatchDate}</p>}
+                      </div>
+
+                      {/* End Date */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-gray-400" />
+                          End Date <span className="text-red-500">*</span>
+                        </label>
+                        <Input 
+                          type="date"
+                          name="endDate"
+                          value={formData.endDate}
+                          onChange={handleChange}
+                          className={`bg-white border-gray-200 shadow-sm ${errors.endDate ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
+                        />
+                        {errors.endDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.endDate}</p>}
+                      </div>
+                    </div>
+
+                    {/* End Time */}
                     <div className="space-y-1.5">
                       <label className="text-xs font-bold text-gray-600 uppercase flex items-center gap-1.5">
-                        <Calendar className="w-3.5 h-3.5 text-gray-400" />
-                        Dispatch Date <span className="text-red-500">*</span>
+                        <Clock className="w-3.5 h-3.5 text-gray-400" />
+                        End Time <span className="text-red-500">*</span>
                       </label>
                       <Input 
-                        type="date"
-                        name="dispatchDate"
-                        value={formData.dispatchDate}
+                        type="time"
+                        name="endTime"
+                        value={formData.endTime}
                         onChange={handleChange}
-                        className={`bg-white border-gray-200 shadow-sm ${errors.dispatchDate ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
+                        className={`bg-white border-gray-200 shadow-sm ${errors.endTime ? 'border-red-500' : 'focus-visible:ring-green-500'}`}
                       />
-                      {errors.dispatchDate && <p className="text-xs text-red-500 animate-in fade-in">{errors.dispatchDate}</p>}
+                      {errors.endTime && <p className="text-xs text-red-500 animate-in fade-in">{errors.endTime}</p>}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -363,9 +405,9 @@ export default function CreateLoadPage() {
                     </div>
 
                     {/* Total Freight Value Highlight */}
-                    <div className="mt-6 bg-green-50 rounded-xl p-5 border border-green-100 flex flex-col justify-between gap-2">
-                      <div>
-                        <h3 className="text-sm font-bold text-green-800 uppercase">Estimated Freight Value</h3>
+                    <div className="bg-green-50 border border-green-100 rounded-xl p-6 relative overflow-hidden group hover:border-green-300 transition-colors">
+                      <div className="relative z-10">
+                        <h3 className="text-sm font-bold text-green-800 uppercase">Estimated Value</h3>
                         <p className="text-xs text-green-600/80 mt-0.5 font-medium">Calculated: Tonnes × Rate / Tonne</p>
                       </div>
                       <div className="text-3xl font-bold text-green-700 font-mono tracking-tight mt-2">
@@ -392,7 +434,7 @@ export default function CreateLoadPage() {
                   ) : (
                     <>
                       <Send className="w-5 h-5 mr-2" />
-                      Publish Load
+                      Publish Bid
                     </>
                   )}
                 </Button>

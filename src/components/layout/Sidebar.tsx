@@ -12,7 +12,8 @@ import {
   Settings, 
   ChevronLeft,
   ChevronRight,
-  FileText
+  FileText,
+  Code2
 } from 'lucide-react'
 import { useDashboardStore } from '@/store/useStore'
 import { useProfileStore } from '@/store/profileStore'
@@ -41,7 +42,6 @@ const menuItems = [
   ]},
   { group: "SETTINGS", items: [
     { name: "General Settings", icon: Settings, path: "/settings" },
-    { name: "Documents", icon: FileText, path: "/settings/documents" },
     { name: "Notification Settings", icon: CheckCircle2, path: "/settings/notifications" }
   ]}
 ]
