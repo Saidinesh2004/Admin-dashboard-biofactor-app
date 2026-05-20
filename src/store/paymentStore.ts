@@ -31,7 +31,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
       loadId: "LD-1001",
       transporter: "Delhi Roadlines",
       amount: 55000,
-      penalty: 2000,
+      penalty: 0,
       tax: 2750,
       extraCharges: 1000,
       finalAmount: 56750,
@@ -91,7 +91,7 @@ export const usePaymentStore = create<PaymentState>((set, get) => ({
     completedLoads.forEach(load => {
       if (!existingLoadIds.includes(load.id)) {
         const freight = load.totalFreight || 0;
-        const penalty = load.tonnes > 25 ? 2000 : 0; // delay/shortage calculation
+        const penalty = 0; // delay/shortage calculation removed
         const tax = Math.round(freight * 0.05); // 5% GST
         const extraCharges = 0;
         const finalAmount = freight + tax + extraCharges - penalty;

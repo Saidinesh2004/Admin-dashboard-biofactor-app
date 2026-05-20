@@ -16,6 +16,7 @@ import { usePaymentStore, type PaymentEntry } from '@/store/paymentStore';
 import { useTransporterStore } from '@/store/transporterStore';
 import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
+import { exportToPDF } from '@/utils/exportPdf';
 
 export default function Payments() {
   const { toast } = useToast();
@@ -56,7 +57,7 @@ export default function Payments() {
   const calculatedPayable = useMemo(() => {
     if (!selectedLoadDetail) return { base: 0, penalty: 0, tax: 0, final: 0 };
     const base = selectedLoadDetail.totalFreight || 0;
-    const penalty = selectedLoadDetail.tonnes > 25 ? 2000 : 0;
+    const penalty = 0; // Shortage Delay Penalty removed
     const tax = Math.round(base * 0.05); // 5% GST
     const extra = parseFloat(extraCharges) || 0;
     const final = base + tax + extra - penalty;
@@ -145,12 +146,29 @@ export default function Payments() {
     setReleasingPayment(null);
   };
 
-  const triggerMockDownload = (type: string, id: string) => {
-    toast({
-      title: "Document Compiled",
-      description: `Downloading ${type} for ID: ${id} successfully completed.`,
-      className: "bg-blue-600 text-white font-bold border-none"
-    });
+  const triggerMockDownload = async (type: string, id: string, elementId?: string) => {
+    if (elementId) {
+      try {
+        await exportToPDF(elementId, `${id}.pdf`);
+        toast({
+          title: "Document Downloaded",
+          description: `${type} for ID: ${id} has been saved as PDF.`,
+          className: "bg-green-600 text-white font-bold border-none"
+        });
+      } catch (err) {
+        toast({
+          title: "Download Failed",
+          description: "Could not generate PDF.",
+          variant: "destructive"
+        });
+      }
+    } else {
+      toast({
+        title: "Document Compiled",
+        description: `Downloading ${type} for ID: ${id} successfully completed.`,
+        className: "bg-blue-600 text-white font-bold border-none"
+      });
+    }
   };
 
   const getStatusBadge = (status: PaymentEntry['status']) => {
@@ -179,13 +197,7 @@ export default function Payments() {
           <p className="text-sm text-gray-500 mt-1">Manage transporter billing pipelines, taxes, and instant NEFT/RTGS audits.</p>
         </div>
         <div className="flex items-center gap-2.5">
-          <Button 
-            variant="outline" 
-            onClick={() => setIsHistoryOpen(true)}
-            className="gap-2 bg-white border-slate-200 text-slate-700 shadow-xs hover:bg-slate-50 font-semibold"
-          >
-            <BarChart3 size={15} /> Payment Analytics
-          </Button>
+          {/* Payment Analytics button removed */}
           <Button 
             onClick={() => setIsPayoutModalOpen(true)}
             className="bg-primary hover:bg-primary-hover text-white gap-2 shadow-md transition-all active:scale-95 font-semibold"
@@ -254,8 +266,8 @@ export default function Payments() {
               </div>
             </div>
             <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-100">
-              <span className="text-slate-400 font-medium">Auto-deducted Penalties:</span>
-              <span className="font-bold text-amber-600">Active GST Audit (5%)</span>
+              <span className="text-slate-400 font-medium">Active GST Audit:</span>
+              <span className="font-bold text-amber-600">5% Processing</span>
             </div>
           </CardContent>
         </Card>
@@ -301,12 +313,10 @@ export default function Payments() {
             <Table>
               <TableHeader className="bg-slate-50">
                 <TableRow>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[10px] py-3.5 pl-6">Ledger ID</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Load Reference</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[10px] py-3.5 pl-6">Load ID</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Settlement Date</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Transporter</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Base Freight</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Penalty</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Total Value</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Final Settled</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Status</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[10px] text-right pr-6">Actions</TableHead>
@@ -315,19 +325,17 @@ export default function Payments() {
               <TableBody>
                 {filteredPayments.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center py-10 text-slate-400 italic text-xs">
+                    <TableCell colSpan={7} className="text-center py-10 text-slate-400 italic text-xs">
                       No matching records found in ledger.
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredPayments.map((tx) => (
                     <TableRow key={tx.paymentId} className="hover:bg-slate-50/40">
-                      <TableCell className="font-bold text-xs pl-6 font-mono text-slate-700">{tx.paymentId}</TableCell>
-                      <TableCell className="text-xs font-mono font-bold text-primary">{tx.loadId}</TableCell>
+                      <TableCell className="text-xs font-mono font-bold text-primary pl-6">{tx.loadId}</TableCell>
                       <TableCell className="text-xs text-slate-500">{tx.createdAt}</TableCell>
                       <TableCell className="font-semibold text-xs text-slate-800">{tx.transporter}</TableCell>
                       <TableCell className="font-bold text-xs font-mono text-slate-600">₹{tx.amount.toLocaleString()}</TableCell>
-                      <TableCell className="font-bold text-xs font-mono text-rose-600">-₹{tx.penalty.toLocaleString()}</TableCell>
                       <TableCell className="font-bold text-xs font-mono text-slate-900">₹{tx.finalAmount.toLocaleString()}</TableCell>
                       <TableCell>{getStatusBadge(tx.status)}</TableCell>
                       <TableCell className="text-right pr-6" onClick={e => e.stopPropagation()}>
@@ -406,10 +414,6 @@ export default function Payments() {
                   <span className="text-slate-400">Approved Base Freight:</span>
                   <span className="font-mono font-semibold">₹{calculatedPayable.base.toLocaleString()}</span>
                 </div>
-                <div className="flex justify-between text-rose-600">
-                  <span className="flex items-center gap-1">Delay Penalty (Auto): <AlertTriangle size={11} /></span>
-                  <span className="font-mono font-bold">-₹{calculatedPayable.penalty.toLocaleString()}</span>
-                </div>
                 <div className="flex justify-between">
                   <span>GST Tax (5%):</span>
                   <span className="font-mono">₹{calculatedPayable.tax.toLocaleString()}</span>
@@ -466,7 +470,7 @@ export default function Payments() {
       <Dialog open={!!viewingInvoice} onOpenChange={(val) => !val && setViewingInvoice(null)}>
         <DialogContent className="sm:max-w-[550px] border-0 rounded-2xl shadow-xl bg-white p-0 overflow-hidden font-sans">
           {viewingInvoice && (
-            <div className="flex flex-col">
+            <div id={`invoice-modal-${viewingInvoice.invoiceId}`} className="flex flex-col bg-white">
               
               {/* Invoice Header */}
               <div className="bg-slate-900 text-white p-6 flex justify-between items-start">
@@ -518,11 +522,6 @@ export default function Payments() {
                         <span className="text-center text-slate-500 font-mono">Base Bid Value</span>
                         <span className="text-right font-semibold font-mono text-slate-800">₹{viewingInvoice.amount.toLocaleString()}</span>
                       </div>
-                      <div className="grid grid-cols-3 text-rose-600">
-                        <span className="font-semibold">Shortage Delay Penalty</span>
-                        <span className="text-center font-mono">Auto Deducted</span>
-                        <span className="text-right font-bold font-mono">-₹{viewingInvoice.penalty.toLocaleString()}</span>
-                      </div>
                       <div className="grid grid-cols-3">
                         <span className="font-semibold text-slate-800">GST (5%)</span>
                         <span className="text-center text-slate-500 font-mono">CGST/SGST</span>
@@ -553,7 +552,7 @@ export default function Payments() {
                   Close
                 </Button>
                 <Button 
-                  onClick={() => triggerMockDownload('Invoice PDF', viewingInvoice.invoiceId)}
+                  onClick={() => triggerMockDownload('Invoice PDF', viewingInvoice.invoiceId, `invoice-modal-${viewingInvoice.invoiceId}`)}
                   className="bg-primary hover:bg-primary-hover text-white h-9 px-4 shadow-sm font-bold uppercase text-xs tracking-wider flex items-center gap-1.5"
                 >
                   <Download size={14} /> Download PDF
