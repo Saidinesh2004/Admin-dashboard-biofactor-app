@@ -1,7 +1,8 @@
 /**
- * Robust API Client for Biofactor Admin Dashboard
- * Connects to the developer's live ngrok backend.
- * Handles automatic failover to local storage and mock data if the ngrok URL is offline.
+ * Mapped API Client for Biofactor Admin Dashboard
+ * Connects directly to the backend developer's exact /api sub-paths.
+ * Converts frontend camelCase fields into backend snake_case payloads seamlessly.
+ * Includes automatic failover to local storage and mock data if ngrok is offline.
  */
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://anabella-furuncular-tammi.ngrok-free.dev';
@@ -30,17 +31,11 @@ export const apiClient = {
       const controller = new AbortController();
       const id = setTimeout(() => controller.abort(), 3500); // 3.5s timeout for fast UI response
 
-      const response = await fetch(`${API_BASE_URL}/health`, {
+      // Ping open bidding feed endpoint for health check
+      const response = await fetch(`${API_BASE_URL}/api/loads/active`, {
         method: 'GET',
         headers: getHeaders(),
         signal: controller.signal,
-      }).catch(async () => {
-        // Fallback check: try fetching loads endpoint directly in case /health is not defined
-        return fetch(`${API_BASE_URL}/api/loads`, {
-          method: 'GET',
-          headers: getHeaders(),
-          signal: controller.signal,
-        });
       });
 
       clearTimeout(id);
@@ -66,27 +61,57 @@ export const apiClient = {
   },
 
   /**
-   * Fetches loads from the backend. Fallback handled inside store.
+   * Fetches the open/active bidding load feed (GET /api/loads/active)
    */
   getLoads: async (): Promise<any[]> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads`, {
+    const response = await fetch(`${API_BASE_URL}/api/loads/active`, {
       method: 'GET',
       headers: getHeaders(),
     });
     if (!response.ok) {
       throw new Error(`Failed to fetch loads: ${response.statusText}`);
     }
-    return response.json();
+    const data = await response.json();
+    
+    // Map snake_case database response back to frontend camelCase
+    return data.map((item: any) => ({
+      id: item.id || `LD-${item.bid_id || Math.floor(1000 + Math.random() * 9000)}`,
+      bidId: item.bid_id || `BF-BID-2026-${Math.floor(100 + Math.random() * 900)}`,
+      from: item.from_location || '',
+      stops: item.routes || [],
+      to: item.to_location || '',
+      product: item.product || 'Rice',
+      tonnes: Number(item.number_of_tonnes || 0),
+      ratePerTonne: Number(item.cost_per_tonne || 0),
+      totalFreight: Number(item.base_bid_amount || 0),
+      dispatchDate: item.dispatch_date || '',
+      endDate: item.end_date || '',
+      endTime: item.end_time || '',
+      status: item.status === 'CLOSED' ? 'Completed' : (item.status || 'Open'),
+      createdAt: item.created_at || Date.now(),
+    }));
   },
 
   /**
-   * Creates a new load on the backend.
+   * Creates a new load on the backend database (POST /api/loads/create)
    */
   createLoad: async (loadData: any): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads`, {
+    const payload = {
+      bid_id: loadData.bidId,
+      from_location: loadData.from,
+      to_location: loadData.to,
+      routes: loadData.stops || [],
+      dispatch_date: loadData.dispatchDate,
+      number_of_tonnes: Number(loadData.tonnes),
+      cost_per_tonne: Number(loadData.ratePerTonne),
+      base_bid_amount: Number(loadData.totalFreight),
+      product: loadData.product || 'Rice'
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/loads/create`, {
       method: 'POST',
       headers: getHeaders(),
-      body: JSON.stringify(loadData),
+      body: JSON.stringify(payload),
     });
     if (!response.ok) {
       throw new Error(`Failed to create load: ${response.statusText}`);
@@ -95,59 +120,155 @@ export const apiClient = {
   },
 
   /**
-   * Updates an existing load on the backend.
+   * Fetches all bids/quotes for a specific load from the backend (GET /api/bids/load/{bid_id})
    */
-  updateLoad: async (id: string, updatedFields: any): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads/${id}`, {
-      method: 'PUT',
+  getBidsForLoad: async (bidId: string): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/bids/load/${bidId}`, {
+      method: 'GET',
       headers: getHeaders(),
-      body: JSON.stringify(updatedFields),
     });
     if (!response.ok) {
-      throw new Error(`Failed to update load: ${response.statusText}`);
+      throw new Error(`Failed to fetch bids for load: ${response.statusText}`);
+    }
+    const data = await response.json();
+
+    return data.map((b: any, index: number) => ({
+      id: b.quote_id || b.id || `BID-${Math.floor(1000 + Math.random() * 9000)}`,
+      rank: index + 1,
+      transporterName: b.transporter_name || b.company_name || 'Transporter',
+      vehicleType: b.vehicle_type || '22-Tonne Open High Side',
+      bidAmount: Number(b.bid_amount || 0),
+      pricePerTonne: Number(b.price_per_tonne || b.bid_amount / (b.tonnes || 1)),
+      eta: b.eta || '24 hrs',
+      driverRating: Number(b.driver_rating || 4.5),
+      experienceYears: Number(b.experience_years || 5),
+      verificationStatus: b.verification_status || ['KYC Verified', 'Trusted Transporter'],
+      status: b.status || 'Pending',
+      transporterDetails: {
+        companyName: b.transporter_name || b.company_name || 'Transporter',
+        ownerName: b.owner_name || 'Owner',
+        fleetSize: Number(b.fleet_size || 10),
+        completedTrips: Number(b.completed_trips || 100),
+        insuranceValidity: b.insurance_validity || 'Valid',
+        kycStatus: b.kyc_status || 'Verified',
+        rating: Number(b.rating || 4.5),
+        experienceYears: Number(b.experience_years || 5)
+      }
+    }));
+  },
+
+  /**
+   * Place a quote bid on a load (POST /api/bids/place)
+   */
+  placeBid: async (bidDetails: { loadId: string; userId: string; userType: string; bidAmount: number }): Promise<any> => {
+    const payload = {
+      load_id: bidDetails.loadId,
+      user_id: bidDetails.userId,
+      user_type: bidDetails.userType,
+      bid_amount: bidDetails.bidAmount
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/bids/place`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to place bid: ${response.statusText}`);
     }
     return response.json();
   },
 
   /**
-   * Deletes a load on the backend.
+   * Accepts the chosen bid quote and automatically starts a Trip (POST /api/bids/accept/{quote_id})
    */
-  deleteLoad: async (id: string): Promise<boolean> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads/${id}`, {
-      method: 'DELETE',
-      headers: getHeaders(),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to delete load: ${response.statusText}`);
-    }
-    return true;
-  },
-
-  /**
-   * Approves a specific transporter bid on the backend.
-   */
-  approveBid: async (loadId: string, bidId: string): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads/${loadId}/bids/${bidId}/approve`, {
+  approveBid: async (quoteId: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/api/bids/accept/${quoteId}`, {
       method: 'POST',
       headers: getHeaders(),
     });
     if (!response.ok) {
-      throw new Error(`Failed to approve bid: ${response.statusText}`);
+      throw new Error(`Failed to accept bid: ${response.statusText}`);
     }
     return response.json();
   },
 
   /**
-   * Submits a negotiation counter-offer on the backend.
+   * Fetches all live active trips for admin dashboard map tracking (GET /api/trips/all)
    */
-  negotiateBid: async (loadId: string, bidId: string, negotiationDetails: any): Promise<any> => {
-    const response = await fetch(`${API_BASE_URL}/api/loads/${loadId}/bids/${bidId}/negotiate`, {
-      method: 'POST',
+  getAllTrips: async (): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/trips/all`, {
+      method: 'GET',
       headers: getHeaders(),
-      body: JSON.stringify(negotiationDetails),
     });
     if (!response.ok) {
-      throw new Error(`Failed to negotiate bid: ${response.statusText}`);
+      throw new Error(`Failed to fetch trips: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Updates a specific trip's delivery status (POST /api/trips/{trip_id}/status?status_value=IN_TRANSIT)
+   */
+  updateTripStatus: async (tripId: string, statusValue: 'PENDING' | 'IN_TRANSIT' | 'COMPLETED'): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/api/trips/${tripId}/status?status_value=${statusValue}`, {
+      method: 'POST',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to update trip status: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Submits a user's verification KYC documents to the backend database (POST /api/auth/{user_id}/upload-docs)
+   */
+  uploadKycDocuments: async (userId: string, formData: FormData): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/api/auth/${userId}/upload-docs`, {
+      method: 'POST',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+        // Do NOT set Content-Type header here; browser will automatically set boundary for multipart/form-data
+      },
+      body: formData,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to upload KYC documents: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Retrieves pending registrations for Admin KYC review panel (GET /api/admin/pending-users)
+   */
+  getPendingKycUsers: async (): Promise<any[]> => {
+    const response = await fetch(`${API_BASE_URL}/api/admin/pending-users`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch pending users: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Submits Admin review choice for a transporter registration (POST /api/admin/verify-user/{user_id})
+   */
+  verifyUser: async (userId: string, isApproved: boolean, rejectionReason?: string): Promise<any> => {
+    const payload = {
+      is_approved: isApproved,
+      rejection_reason: rejectionReason || ''
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/verify-user/${userId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to verify user: ${response.statusText}`);
     }
     return response.json();
   }

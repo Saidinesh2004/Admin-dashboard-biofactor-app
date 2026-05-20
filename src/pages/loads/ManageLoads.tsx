@@ -20,7 +20,7 @@ import { exportToExcel } from '@/utils/exportCsv';
 
 export default function ManageLoads() {
   const { toast } = useToast();
-  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads } = useLoadStore();
+  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads, fetchBidsForLoad } = useLoadStore();
   
   // Filtering & Search for Main Table
   const [search, setSearch] = useState('');
@@ -34,6 +34,13 @@ export default function ManageLoads() {
   // Active Bidding States inside Drawer
   const [bidSearch, setBidSearch] = useState('');
   const [bidSort, setBidSort] = useState<'asc' | 'desc'>('asc');
+
+  // Fetch live bids whenever a load is selected for viewing
+  useEffect(() => {
+    if (selectedLoadId) {
+      fetchBidsForLoad(selectedLoadId);
+    }
+  }, [selectedLoadId, fetchBidsForLoad]);
 
   // Auto-close expired loads on mount and every 60 seconds
   useEffect(() => {
