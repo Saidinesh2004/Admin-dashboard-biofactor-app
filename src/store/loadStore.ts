@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { loadService, type Load, type Bid, type Transporter } from '@/services/loadService';
 import { useTransporterStore } from './transporterStore';
+import { apiClient } from '@/services/apiClient';
 
 export type { Load, Bid, Transporter };
 
@@ -73,13 +74,19 @@ const generateMockBids = (load: Load): Bid[] => {
 
 interface LoadState {
   loads: Load[];
-  addLoad: (load: Load) => void;
-  updateLoad: (id: string, updatedFields: Partial<Load>) => void;
-  deleteLoad: (id: string) => void;
-  fetchLoads: () => void;
-  approveBid: (loadId: string, bidId: string) => void;
+  isBackendConnected: boolean;
+  isConnecting: boolean;
+  connectionMode: 'live' | 'demo';
+  backendUrl: string;
+  backendError: string | null;
+  checkApiConnection: () => Promise<void>;
+  addLoad: (load: Load) => Promise<void>;
+  updateLoad: (id: string, updatedFields: Partial<Load>) => Promise<void>;
+  deleteLoad: (id: string) => Promise<void>;
+  fetchLoads: () => Promise<void>;
+  approveBid: (loadId: string, bidId: string) => Promise<void>;
   rejectBid: (loadId: string, bidId: string) => void;
-  negotiateBid: (loadId: string, bidId: string, counterOffer: number, remarks: string, validTill: string, priority: string) => void;
+  negotiateBid: (loadId: string, bidId: string, counterOffer: number, remarks: string, validTill: string, priority: string) => Promise<void>;
   assignVehicle: (loadId: string, vehicleNo: string, driverName: string) => void;
   simulateNewBid: (loadId: string) => void;
   autoCloseExpiredLoads: () => number; // returns count of auto-closed loads
@@ -100,37 +107,114 @@ const getInitialLoads = (): Load[] => {
 
 export const useLoadStore = create<LoadState>((set, get) => ({
   loads: typeof window !== 'undefined' ? getInitialLoads() : [],
-  
-  fetchLoads: () => {
-    const loads = getInitialLoads();
-    set({ loads });
+  isBackendConnected: false,
+  isConnecting: false,
+  connectionMode: 'demo',
+  backendUrl: '',
+  backendError: null,
+
+  checkApiConnection: async () => {
+    const conn = await apiClient.checkConnection();
+    set({
+      isBackendConnected: conn.isConnected,
+      connectionMode: conn.mode,
+      backendUrl: conn.url,
+      backendError: conn.errorMessage || null
+    });
   },
   
-  addLoad: (load) => {
+  fetchLoads: async () => {
+    set({ isConnecting: true });
+    
+    // First, verify API connectivity
+    const conn = await apiClient.checkConnection();
+    set({
+      isBackendConnected: conn.isConnected,
+      connectionMode: conn.mode,
+      backendUrl: conn.url,
+      backendError: conn.errorMessage || null
+    });
+
+    if (conn.isConnected) {
+      try {
+        const backendLoads = await apiClient.getLoads();
+        
+        // Ensure every load has generated bids if it's missing them
+        const standardLoads = backendLoads.map(load => {
+          if (!load.bids || load.bids.length === 0) {
+            return {
+              ...load,
+              bids: generateMockBids(load)
+            };
+          }
+          return load;
+        });
+
+        set({ loads: standardLoads, isConnecting: false });
+        loadService.saveLoads(standardLoads); // local cache
+        return;
+      } catch (err: any) {
+        console.error("Backend fetch error, falling back to local storage:", err);
+        set({ backendError: err.message || 'API standard error' });
+      }
+    }
+
+    // Fallback mode if backend down or not connected
+    const loads = getInitialLoads();
+    set({ loads, connectionMode: 'demo', isConnecting: false });
+  },
+  
+  addLoad: async (load) => {
     const loadWithBids = {
       ...load,
       bids: load.bids && load.bids.length > 0 ? load.bids : generateMockBids(load)
     };
+    
+    // Optimistic UI updates
     const updatedLoads = [loadWithBids, ...get().loads];
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    if (get().connectionMode === 'live') {
+      try {
+        await apiClient.createLoad(loadWithBids);
+      } catch (err) {
+        console.error("Failed to sync new load to backend:", err);
+      }
+    }
   },
   
-  updateLoad: (id, updatedFields) => {
+  updateLoad: async (id, updatedFields) => {
     const updatedLoads = get().loads.map((l) =>
       l.id === id ? { ...l, ...updatedFields } : l
     );
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    if (get().connectionMode === 'live') {
+      try {
+        await apiClient.updateLoad(id, updatedFields);
+      } catch (err) {
+        console.error("Failed to sync load update to backend:", err);
+      }
+    }
   },
   
-  deleteLoad: (id) => {
+  deleteLoad: async (id) => {
     const updatedLoads = get().loads.filter((l) => l.id !== id);
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    if (get().connectionMode === 'live') {
+      try {
+        await apiClient.deleteLoad(id);
+      } catch (err) {
+        console.error("Failed to sync load deletion to backend:", err);
+      }
+    }
   },
 
-  approveBid: (loadId, bidId) => {
+  approveBid: async (loadId, bidId) => {
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId) {
         const approvedBid = l.bids?.find(b => b.id === bidId);
@@ -163,8 +247,17 @@ export const useLoadStore = create<LoadState>((set, get) => ({
       }
       return l;
     });
+
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    if (get().connectionMode === 'live') {
+      try {
+        await apiClient.approveBid(loadId, bidId);
+      } catch (err) {
+        console.error("Failed to sync bid approval to backend:", err);
+      }
+    }
   },
 
   rejectBid: (loadId, bidId) => {
@@ -203,7 +296,7 @@ export const useLoadStore = create<LoadState>((set, get) => ({
     loadService.saveLoads(updatedLoads);
   },
 
-  negotiateBid: (loadId, bidId, counterOffer, remarks, validTill, priority) => {
+  negotiateBid: async (loadId, bidId, counterOffer, remarks, validTill, priority) => {
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId) {
         const targetBid = l.bids?.find(b => b.id === bidId);
@@ -246,8 +339,22 @@ export const useLoadStore = create<LoadState>((set, get) => ({
       }
       return l;
     });
+
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    if (get().connectionMode === 'live') {
+      try {
+        await apiClient.negotiateBid(loadId, bidId, {
+          counterOffer,
+          remarks,
+          validTill,
+          priority
+        });
+      } catch (err) {
+        console.error("Failed to sync counter offer to backend:", err);
+      }
+    }
   },
 
   assignVehicle: (loadId, vehicleNo, driverName) => {

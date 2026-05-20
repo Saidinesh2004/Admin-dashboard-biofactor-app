@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Search, Bell, Settings, Menu } from 'lucide-react'
+import { Search, Bell, Settings, Menu, Wifi, WifiOff, RefreshCw } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { useDashboardStore } from '@/store/useStore'
 import { useProfileStore } from '@/store/profileStore'
+import { useLoadStore } from '@/store/loadStore'
 import ProfileAvatar from '../profile/ProfileAvatar'
 import ProfileDropdown from '../profile/ProfileDropdown'
 import EditProfileModal from '../profile/EditProfileModal'
@@ -13,6 +14,7 @@ import LogoutModal from '../profile/LogoutModal'
 const Navbar = () => {
   const { toggleSidebar } = useDashboardStore()
   const { profile } = useProfileStore()
+  const { connectionMode, isConnecting } = useLoadStore()
   const navigate = useNavigate()
 
   // Modal & Dropdown visibility states
@@ -29,7 +31,7 @@ const Navbar = () => {
 
   return (
     <header className="h-16 border-b bg-white flex items-center justify-between px-6 sticky top-0 z-40">
-      <div className="flex items-center gap-4 w-1/3">
+      <div className="flex items-center gap-4 w-1/2">
         <Button variant="ghost" size="icon" className="lg:hidden" onClick={toggleSidebar}>
           <Menu size={20} />
         </Button>
@@ -39,6 +41,36 @@ const Navbar = () => {
             placeholder="Search loads, vehicles, transporters..." 
             className="pl-10 bg-gray-50 border-none focus-visible:ring-1 focus-visible:ring-primary/30"
           />
+        </div>
+
+        {/* Live Backend Connection Indicator */}
+        <div className="flex items-center">
+          {isConnecting ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-600 border border-blue-100 shadow-sm animate-pulse">
+              <RefreshCw className="h-3 w-3 animate-spin text-blue-500" />
+              <span>Connecting API...</span>
+            </div>
+          ) : connectionMode === 'live' ? (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-100 shadow-sm transition-all duration-300 hover:bg-emerald-100">
+              <span className="relative flex h-2 w-2">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+              </span>
+              <Wifi className="h-3 w-3 text-emerald-600" />
+              <span className="hidden sm:inline">Backend Connected (ngrok)</span>
+              <span className="sm:hidden">Backend Connected</span>
+            </div>
+          ) : (
+            <div 
+              title="Ngrok backend server is currently offline or unreachable. Running in local simulation mode."
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-100 shadow-sm transition-all duration-300 hover:bg-amber-100 cursor-help"
+            >
+              <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+              <WifiOff className="h-3 w-3 text-amber-600" />
+              <span className="hidden sm:inline">Demo Mode (Local Offline)</span>
+              <span className="sm:hidden">Demo Mode</span>
+            </div>
+          )}
         </div>
       </div>
 

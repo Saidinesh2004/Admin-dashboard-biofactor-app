@@ -5,10 +5,12 @@ import Navbar from '@/components/layout/Navbar'
 import { Toaster } from '@/components/ui/toaster'
 import { useAuthStore } from '@/store/authStore'
 import { useProfileStore } from '@/store/profileStore'
+import { useLoadStore } from '@/store/loadStore'
 
 const DashboardLayout = () => {
   const { isAuthenticated, initializeAuth } = useAuthStore()
   const { fetchProfile } = useProfileStore()
+  const fetchLoads = useLoadStore(state => state.fetchLoads)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -16,7 +18,9 @@ const DashboardLayout = () => {
     initializeAuth()
     // Fetch Profile details
     fetchProfile()
-  }, [initializeAuth, fetchProfile])
+    // Fetch loads from backend (with automatic local storage fallback)
+    fetchLoads()
+  }, [initializeAuth, fetchProfile, fetchLoads])
 
   useEffect(() => {
     // Enforce Route Protection
