@@ -473,6 +473,37 @@ export default function ManageLoads() {
       }
     });
     
+    // Normalize status according to the load's overall operational status.
+    // If the load is Open/Negotiation/Awaiting, then no bid is approved yet. Force all bids to 'Pending' (unless Negotiating).
+    // If the load is Closed/Assigned/Completed, ensure only the accepted/approved bid shows as 'Approved' and others show as 'Rejected'.
+    const loadIsActive = selectedLoad.status === 'Open' || 
+                         selectedLoad.status === 'Negotiation In Progress' || 
+                         selectedLoad.status === 'Awaiting New Bids';
+                         
+    list = list.map(b => {
+      let normalizedStatus = b.status;
+      
+      if (loadIsActive) {
+        if (b.status === 'Approved' || b.status === 'ACCEPTED' || b.status === 'Selected') {
+          normalizedStatus = 'Pending';
+        }
+      } else {
+        const isApprovedBid = b.status === 'ACCEPTED' || b.status === 'Approved' || b.status === 'Selected' || 
+          (selectedLoad.assignedTransporter && selectedLoad.assignedTransporter.companyName === b.transporterName);
+          
+        if (isApprovedBid) {
+          normalizedStatus = 'Approved';
+        } else {
+          normalizedStatus = 'Rejected';
+        }
+      }
+      
+      return {
+        ...b,
+        status: normalizedStatus
+      };
+    });
+    
     // Search by User Name (transporter/driver name) or Vehicle Type
     if (bidSearch.trim() !== '') {
       const query = bidSearch.toLowerCase();
