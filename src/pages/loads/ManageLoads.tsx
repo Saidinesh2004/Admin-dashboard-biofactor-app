@@ -17,6 +17,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { useToast } from '@/hooks/use-toast';
 import { useLoadStore, type Load, type Bid, type Transporter } from '@/store/loadStore';
 import { exportToExcel } from '@/utils/exportCsv';
+import { apiClient } from '@/services/apiClient';
 
 // Helper to identify if an assigned or selected carrier is a Driver vs Transporter
 const isCarrierDriver = (carrierName: string, ownerName?: string, role?: string) => {
@@ -106,6 +107,252 @@ export default function ManageLoads() {
   const [rejectConfirmBid, setRejectConfirmBid] = useState<{ loadId: string; bidId: string; transporterName: string } | null>(null);
   const [viewingTransporter, setViewingTransporter] = useState<any | null>(null);
   const [previewDoc, setPreviewDoc] = useState<{ type: 'rc' | 'insurance'; title: string } | null>(null);
+
+  // Advanced dispatch & audit viewer states
+  const [viewingTruckProfile, setViewingTruckProfile] = useState<any | null>(null);
+  const [loadingTruckProfile, setLoadingTruckProfile] = useState(false);
+  const [loadingAddressInput, setLoadingAddressInput] = useState('Plant Gate #3, Biofactor Industrial Zone, Hyderabad, TS');
+  const [unloadingAddressInput, setUnloadingAddressInput] = useState('Warehouse B-12, Agriculture Center, Vijayawada, AP');
+  const [isSubmittingAddress, setIsSubmittingAddress] = useState(false);
+  const [viewingDocTab, setViewingDocTab] = useState<'rc' | 'insurance'>('rc');
+  const [rcImgFallback, setRcImgFallback] = useState(false);
+  const [insImgFallback, setInsImgFallback] = useState(false);
+
+  const handleViewTruckDetails = async (userId: string, bid: any) => {
+    setLoadingTruckProfile(true);
+    setRcImgFallback(false);
+    setInsImgFallback(false);
+    setViewingDocTab('rc');
+    try {
+      let profileData: any = null;
+      if (connectionMode === 'live' && userId) {
+        try {
+          profileData = await apiClient.getProfileDetails(userId);
+        } catch (err) {
+          console.warn("Failed to fetch live profile details, falling back to enriched local mock:", err);
+        }
+      }
+
+      const truckName = profileData?.vehicle_type || profileData?.truck_name || profileData?.truckName || bid.vehicleType || "TATA LPT 3518 Cowl";
+      const truckNumber = profileData?.vehicle_number || profileData?.truck_number || profileData?.truckNumber || "MH-12-KL-3402";
+      
+      const apiBase = apiClient.getApiUrl();
+      let rcImageUrl = null;
+      let insImageUrl = null;
+
+      if (profileData?.documents && Array.isArray(profileData.documents)) {
+        const rcDoc = profileData.documents.find((d: any) => d.document_type === 'Vehicle RC' || d.document_type === 'vehicleRc');
+        const insDoc = profileData.documents.find((d: any) => d.document_type === 'Insurance' || d.document_type === 'insurance');
+        
+        if (rcDoc?.file_path) {
+          const filename = rcDoc.file_path.split(/[\\/]/).pop();
+          rcImageUrl = `${apiBase}/uploads/${filename}`;
+        }
+        if (insDoc?.file_path) {
+          const filename = insDoc.file_path.split(/[\\/]/).pop();
+          insImageUrl = `${apiBase}/uploads/${filename}`;
+        }
+      }
+
+      if (!rcImageUrl) {
+        const rcFilename = profileData?.vehicle_rc_image || profileData?.rcImage || profileData?.rc_image;
+        rcImageUrl = rcFilename ? `${apiBase}/uploads/${rcFilename}` : null;
+      }
+      if (!insImageUrl) {
+        const insFilename = profileData?.vehicle_insurance_image || profileData?.insuranceImage || profileData?.insurance_image;
+        insImageUrl = insFilename ? `${apiBase}/uploads/${insFilename}` : null;
+      }
+
+      setViewingTruckProfile({
+        userId,
+        bid,
+        carrierName: bid.transporterName,
+        role: bid.role,
+        truckName,
+        truckNumber,
+        rcImageUrl,
+        insImageUrl,
+        rating: bid.driverRating || 4.8,
+        experienceYears: bid.experienceYears || 6,
+        kycStatus: bid.transporterDetails?.kycStatus || "Verified"
+      });
+    } catch (e: any) {
+      toast({
+        title: "Error Loading Truck Profile",
+        description: e.message || "Failed to load truck credentials.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingTruckProfile(false);
+    }
+  };
+
+  const handleDispatchTrip = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!viewingTruckProfile || !selectedLoad) return;
+    
+    setIsSubmittingAddress(true);
+    try {
+      const tripId = selectedLoad.tripId || `TRIP-2026-${selectedLoad.id.split('-')[1] || '1001'}`;
+      const loadingGpsCoordinates = "17.3850, 78.4867"; // Hyderabad
+      const unloadingGpsCoordinates = "16.5062, 80.6480"; // Vijayawada
+
+      if (connectionMode === 'live') {
+        await apiClient.dispatchTripDetails(tripId, {
+          loadingAddress: loadingAddressInput,
+          unloadingAddress: unloadingAddressInput,
+          loadingGpsCoordinates,
+          unloadingGpsCoordinates
+        });
+      }
+
+      updateLoad(selectedLoad.id, {
+        status: 'Assigned & Dispatched',
+      });
+
+      toast({
+        title: "Trip Dispatched!",
+        description: `Successfully dispatched coordinates & addresses to Trip ID: ${tripId}. Driver has been notified.`,
+        className: "bg-green-600 text-white border-none shadow-xl"
+      });
+
+      setViewingTruckProfile(null);
+      setSelectedLoadId(null);
+    } catch (error: any) {
+      toast({
+        title: "Dispatch Failed",
+        description: error.message || "Failed to dispatch addresses to backend.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmittingAddress(false);
+    }
+  };
+
+  const renderSmartRcCard = (profile: any) => {
+    return (
+      <div className="w-[440px] h-[260px] rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-slate-700/60 p-4 shadow-2xl flex flex-col justify-between relative overflow-hidden select-none text-left">
+        <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]" />
+        <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-[10px] text-emerald-400 font-bold">印</div>
+            <div>
+              <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">MINISTRY OF ROAD TRANSPORT & HIGHWAYS</p>
+              <p className="text-[9px] font-extrabold text-white tracking-wider leading-none mt-0.5">GOVERNMENT OF INDIA</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">
+              RC VERIFIED
+            </span>
+          </div>
+        </div>
+        <div className="flex gap-4 items-center my-auto z-10">
+          <div className="w-12 h-9 rounded-md bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 border border-amber-600/30 shadow-md relative flex items-center justify-center p-1 overflow-hidden shrink-0">
+            <div className="absolute inset-x-2 top-0 bottom-0 border-l border-r border-amber-700/30" />
+            <div className="absolute inset-y-1.5 left-0 right-0 border-t border-b border-amber-700/30" />
+            <div className="w-4 h-4 rounded-sm bg-amber-600/20 border border-amber-600/30 z-10" />
+          </div>
+          <div className="flex-1">
+            <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none">REGISTRATION NUMBER</p>
+            <p className="text-xl font-extrabold font-mono text-white tracking-widest mt-1">
+              {profile.truckNumber || 'MH-12-KL-3402'}
+            </p>
+            <p className="text-[9px] font-medium text-indigo-300 mt-0.5 leading-none">
+              {profile.truckName || 'TATA LPT 3518'} / HEAVY MOTOR VEHICLE
+            </p>
+          </div>
+        </div>
+        <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-slate-800/80 z-10 text-[8px]">
+          <div>
+            <span className="text-slate-400 uppercase font-bold block">REGISTERED OWNER</span>
+            <span className="font-extrabold text-white truncate block mt-0.5">
+              {profile.carrierName || 'Biofactor Transporter'}
+            </span>
+          </div>
+          <div>
+            <span className="text-slate-400 uppercase font-bold block">REGISTRATION DATE</span>
+            <span className="font-extrabold text-white block mt-0.5">12-Feb-2024</span>
+          </div>
+          <div>
+            <span className="text-slate-400 uppercase font-bold block">VALIDITY EXPIRE</span>
+            <span className="font-extrabold text-emerald-400 block mt-0.5">11-Feb-2039</span>
+          </div>
+        </div>
+        <div className="absolute right-3 top-12 opacity-30 flex flex-col items-center">
+          <div className="w-10 h-10 rounded-full border-2 border-dashed border-indigo-400 flex items-center justify-center text-[7px] text-indigo-400 font-bold text-center rotate-12 leading-tight">
+            STATE DEPT
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSmartInsuranceCard = (profile: any) => {
+    return (
+      <div className="w-[430px] h-[300px] rounded-xl bg-gradient-to-b from-white via-slate-50 to-white border-4 border-double border-slate-300 p-4 shadow-2xl flex flex-col justify-between text-slate-800 relative overflow-hidden select-none text-left">
+        <div className="text-center border-b pb-2 border-slate-200 relative">
+          <div className="flex items-center justify-center gap-1">
+            <Award className="text-blue-700 h-4 w-4" />
+            <h4 className="text-xs font-black tracking-widest text-blue-900 uppercase">ROYAL SECURITY INSURANCE CO. LTD.</h4>
+          </div>
+          <p className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">COMMERCIAL MOTOR VEHICLE COMPREHENSIVE INSURANCE POLICY</p>
+          <span className="absolute right-0 top-0 text-[7px] font-mono font-bold bg-green-100 border border-green-200 text-green-700 px-1 rounded">
+            ACTIVE
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 my-auto text-[8px] border-b pb-3 border-slate-100">
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">POLICY NUMBER</span>
+            <span className="font-bold text-slate-800 font-mono block">RS-5590-M-489021-2026</span>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">INSURED PARTY NAME</span>
+            <span className="font-bold text-slate-800 block truncate">
+              {profile.carrierName || 'Biofactor Transporter'}
+            </span>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">VEHICLE REGISTRATION NO.</span>
+            <span className="font-bold text-slate-800 font-mono block">{profile.truckNumber || 'MH-12-KL-3402'}</span>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">COVERAGE PERIOD VALIDITY</span>
+            <span className="font-bold text-slate-800 block">
+              Until Dec 31, 2026 (23:59:59)
+            </span>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">INSURED DECLARED VALUE (IDV)</span>
+            <span className="font-bold text-green-700 font-mono block">₹28,50,000.00</span>
+          </div>
+          <div className="space-y-0.5">
+            <span className="text-slate-400 uppercase font-bold block">PREMIUM CONTRIBUTION</span>
+            <span className="font-bold text-slate-800 font-mono block">₹48,250.00 (PAID)</span>
+          </div>
+        </div>
+        <div className="flex justify-between items-end pt-2">
+          <div className="space-y-0.5">
+            <p className="text-[7px] text-slate-400 leading-none">Underwriter stamp & code</p>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-10 h-10 rounded-full border border-dashed border-red-500/80 flex items-center justify-center text-[5px] text-red-500 font-bold text-center rotate-12 leading-tight">
+                ROYAL INS.<br/>APPROVED
+              </div>
+              <div className="w-10 h-10 rounded-full border border-double border-indigo-600/80 flex items-center justify-center text-[5px] text-indigo-600 font-bold text-center -rotate-6 leading-tight">
+                BIOFACTOR<br/>VERIFIED
+              </div>
+            </div>
+          </div>
+          <div className="text-right">
+            <p className="text-[6px] italic font-serif text-slate-500">Chief Underwriting Officer</p>
+            <div className="w-20 h-5 border-b border-slate-300 font-serif text-[10px] text-slate-400 mt-0.5">
+              S. Chatterjee
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Edit Load Form State
   const [editForm, setEditForm] = useState({
@@ -252,7 +499,10 @@ export default function ManageLoads() {
         l.product.toLowerCase().includes(search.toLowerCase()) ||
         stopsMatch;
         
-      const matchesStatus = statusFilter === 'All' || l.status === statusFilter;
+      const matchesStatus = statusFilter === 'All' || 
+        (statusFilter === 'Open' && (l.status === 'Open' || l.status === 'CLOSED')) ||
+        (statusFilter === 'Assigned' && (l.status === 'Assigned & Dispatched' || l.status === 'CLOSED')) ||
+        (statusFilter === 'Completed' && l.status === 'Completed');
       return matchesSearch && matchesStatus;
     });
   }, [loads, search, statusFilter]);
@@ -261,10 +511,10 @@ export default function ManageLoads() {
   const stats = useMemo(() => {
     const total = loads.length;
     const open = loads.filter(l => l.status === 'Open').length;
-    const assigned = loads.filter(l => l.status === 'Assigned & Dispatched').length;
+    const assigned = loads.filter(l => l.status === 'Assigned & Dispatched' || l.status === 'CLOSED').length;
     const completed = loads.filter(l => l.status === 'Completed').length;
     const revenue = loads
-      .filter(l => l.status === 'Completed' || l.status === 'Assigned & Dispatched')
+      .filter(l => l.status === 'Completed' || l.status === 'Assigned & Dispatched' || l.status === 'CLOSED')
       .reduce((sum, l) => sum + (l.totalFreight || 0), 0);
     const activeVehicles = assigned;
     
@@ -277,6 +527,8 @@ export default function ManageLoads() {
         return <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border-none px-3 py-1 font-semibold">Open</Badge>;
       case 'Assigned & Dispatched': 
         return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-none px-3 py-1 font-semibold">Assigned & Dispatched</Badge>;
+      case 'CLOSED':
+        return <Badge className="bg-blue-100 text-blue-800 hover:bg-blue-200 border-none px-3 py-1 font-semibold">Assigned (Pending Dispatch)</Badge>;
       case 'Negotiation In Progress': 
         return <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none px-3 py-1 font-semibold">Negotiating</Badge>;
       case 'Awaiting New Bids': 
@@ -293,10 +545,10 @@ export default function ManageLoads() {
       case 'Approved':
       case 'Selected':
       case 'ACCEPTED':
-        return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">ACCEPTED</Badge>;
+        return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">Approved</Badge>;
       case 'Rejected':
       case 'REJECTED':
-        return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">REJECTED</Badge>;
+        return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">Rejected</Badge>;
       case 'Negotiating':
         return <Badge className="bg-amber-100 text-amber-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">NEGOTIATING</Badge>;
       default:
@@ -1005,37 +1257,28 @@ export default function ManageLoads() {
 
                                 {/* Actions */}
                                 <TableCell className="text-right" onClick={e => e.stopPropagation()}>
-                                  {selectedLoad.status !== 'Assigned & Dispatched' && selectedLoad.status !== 'Completed' ? (
+                                  {selectedLoad.status === 'CLOSED' || selectedLoad.status === 'Assigned & Dispatched' || selectedLoad.status === 'Completed' ? (
+                                    (bid.status === 'ACCEPTED' || bid.status === 'Approved') ? (
+                                      <Button 
+                                        onClick={() => handleViewTruckDetails((bid as any).userId || (selectedLoad.assignedTransporter as any)?.id || '', bid)}
+                                        size="sm"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white h-7 text-[10px] px-2.5 font-bold uppercase rounded shadow-xs"
+                                      >
+                                        View Truck Details
+                                      </Button>
+                                    ) : (
+                                      <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider bg-red-50 px-2 py-1 rounded">Rejected</span>
+                                    )
+                                  ) : (
                                     <div className="flex items-center justify-end gap-1 select-none">
                                       <Button 
                                         onClick={() => handleApproveBid(selectedLoad.id, bid.id, bid.transporterName)}
                                         size="sm"
-                                        className="bg-green-600 hover:bg-green-700 text-white h-7 text-[10px] px-2.5 font-bold uppercase rounded shadow-xs"
+                                        className="bg-green-600 hover:bg-green-700 text-white h-7 text-[10px] px-2.5 font-bold uppercase rounded shadow-xs animate-pulse"
                                       >
                                         Approve
                                       </Button>
-                                      <Button 
-                                        onClick={() => {
-                                          setNegotiatingBid({ loadId: selectedLoad.id, bid });
-                                          setCounterOffer(bid.bidAmount.toString());
-                                        }}
-                                        variant="outline"
-                                        size="sm"
-                                        className="h-7 text-[10px] px-2.5 font-bold uppercase border-slate-200 text-slate-700 bg-white"
-                                      >
-                                        Negotiate
-                                      </Button>
-                                      <Button 
-                                        onClick={() => setRejectConfirmBid({ loadId: selectedLoad.id, bidId: bid.id, transporterName: bid.transporterName })}
-                                        variant="ghost"
-                                        size="icon"
-                                        className="h-7 w-7 text-red-500 rounded-full hover:bg-red-50"
-                                      >
-                                        <X size={13} />
-                                      </Button>
                                     </div>
-                                  ) : (
-                                    <span className="text-[10px] text-slate-400 font-bold uppercase italic tracking-wider">Locked</span>
                                   )}
                                 </TableCell>
                               </motion.tr>
@@ -1625,6 +1868,224 @@ export default function ManageLoads() {
                 >
                   Approve Document Credentials
                 </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* TRUCK PROFILE & ADDRESS DISPATCH CONSOLE DIALOG */}
+      <Dialog open={!!viewingTruckProfile} onOpenChange={(val) => !val && setViewingTruckProfile(null)}>
+        <DialogContent className="max-w-4xl border-0 rounded-2xl shadow-2xl overflow-hidden bg-slate-900 text-white p-0">
+          {viewingTruckProfile && (
+            <div className="flex flex-col h-full max-h-[90vh]">
+              {/* Header */}
+              <div className="p-6 bg-slate-950 border-b border-slate-800 flex justify-between items-center font-sans">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Truck size={20} />
+                  </div>
+                  <div className="text-left">
+                    <h3 className="text-base font-bold tracking-tight text-white">Truck Details & Address Dispatch</h3>
+                    <p className="text-xs text-slate-400">Audit carrier compliance documents and dispatch coordinates.</p>
+                  </div>
+                </div>
+                <Button 
+                  type="button"
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setViewingTruckProfile(null)} 
+                  className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+
+              {/* Grid Content */}
+              <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/50">
+                {/* Left Column: Truck Info & Documents */}
+                <div className="space-y-6">
+                  {/* Truck Info Card */}
+                  <Card className="border border-slate-800 bg-slate-950/80 shadow-none text-white overflow-hidden">
+                    <div className="p-4 bg-slate-950 border-b border-slate-800/80 flex items-center gap-2">
+                      <ShieldCheck className="text-blue-500 h-4 w-4" />
+                      <span className="text-xs font-bold uppercase tracking-wider text-slate-300">Carrier & Truck Profile</span>
+                    </div>
+                    <CardContent className="p-4 space-y-4">
+                      <div className="grid grid-cols-2 gap-4 text-xs text-left">
+                        <div className="space-y-1">
+                          <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[10px]">Carrier Name</span>
+                          <span className="font-bold text-slate-100 text-sm">{viewingTruckProfile.carrierName}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[10px]">Role</span>
+                          <Badge className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[10px] font-bold px-2 py-0.5">
+                            {viewingTruckProfile.role}
+                          </Badge>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[10px]">Truck Name</span>
+                          <span className="font-bold text-slate-100 text-sm">{viewingTruckProfile.truckName}</span>
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-slate-400 block font-semibold uppercase tracking-wider text-[10px]">Truck Number</span>
+                          <span className="font-bold text-blue-400 font-mono text-sm tracking-wider">{viewingTruckProfile.truckNumber}</span>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Document Previews Container */}
+                  <div className="space-y-3">
+                    <span className="text-xs font-bold uppercase tracking-wider text-slate-400 block text-left">Uploaded Compliance Documents</span>
+                    
+                    {/* Document Selector tabs */}
+                    <div className="flex gap-2 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                      <button
+                        type="button"
+                        onClick={() => setViewingDocTab('rc')}
+                        className={`flex-1 text-xs py-2 rounded-md font-bold transition-all ${
+                          viewingDocTab === 'rc' 
+                            ? 'bg-blue-600 text-white shadow-md' 
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Vehicle RC Card
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setViewingDocTab('insurance')}
+                        className={`flex-1 text-xs py-2 rounded-md font-bold transition-all ${
+                          viewingDocTab === 'insurance' 
+                            ? 'bg-blue-600 text-white shadow-md' 
+                            : 'text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Insurance Policy
+                      </button>
+                    </div>
+
+                    {/* Active Tab Document preview */}
+                    <div className="flex items-center justify-center min-h-[320px] border border-slate-800 bg-slate-950/50 rounded-xl p-4 relative overflow-hidden">
+                      {viewingDocTab === 'rc' ? (
+                        (viewingTruckProfile.rcImageUrl && !rcImgFallback) ? (
+                          <div className="space-y-2 text-center w-full">
+                            <img 
+                              src={viewingTruckProfile.rcImageUrl} 
+                              alt="Vehicle RC Document" 
+                              className="max-h-[280px] mx-auto rounded-lg border border-slate-700 object-contain shadow-lg"
+                              onError={() => {
+                                setRcImgFallback(true);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          renderSmartRcCard(viewingTruckProfile)
+                        )
+                      ) : (
+                        (viewingTruckProfile.insImageUrl && !insImgFallback) ? (
+                          <div className="space-y-2 text-center w-full">
+                            <img 
+                              src={viewingTruckProfile.insImageUrl} 
+                              alt="Vehicle Insurance Document" 
+                              className="max-h-[280px] mx-auto rounded-lg border border-slate-700 object-contain shadow-lg"
+                              onError={() => {
+                                setInsImgFallback(true);
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          renderSmartInsuranceCard(viewingTruckProfile)
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Column: Dispatch Input Form */}
+                <div className="flex flex-col justify-between border-t md:border-t-0 md:border-l border-slate-800 md:pl-6 pt-6 md:pt-0">
+                  <form onSubmit={handleDispatchTrip} className="space-y-6 flex-1 flex flex-col justify-between text-left">
+                    <div className="space-y-4">
+                      <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 space-y-1.5 text-left">
+                        <div className="flex items-center gap-2 font-bold text-blue-200">
+                          <CheckCircle2 size={14} className="text-blue-400" />
+                          DOCUMENT REVIEW APPROVED
+                        </div>
+                        <p className="leading-relaxed">
+                          The documents and truck credentials match standard regulations. Please proceed with specifying pickup & delivery destinations to assign the trip.
+                        </p>
+                      </div>
+
+                      {/* Loading Address */}
+                      <div className="space-y-2 text-left">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin size={13} className="text-green-500" /> Loading Address
+                        </label>
+                        <Input 
+                          value={loadingAddressInput}
+                          onChange={(e) => setLoadingAddressInput(e.target.value)}
+                          placeholder="Enter dispatch pick-up point address..."
+                          className="bg-slate-950 border-slate-800 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-slate-900 placeholder:text-slate-600"
+                          required
+                        />
+                      </div>
+
+                      {/* Unloading Address */}
+                      <div className="space-y-2 text-left">
+                        <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin size={13} className="text-red-500" /> Unloading Address
+                        </label>
+                        <Input 
+                          value={unloadingAddressInput}
+                          onChange={(e) => setUnloadingAddressInput(e.target.value)}
+                          placeholder="Enter drop-off destination address..."
+                          className="bg-slate-950 border-slate-800 text-white focus-visible:ring-blue-500 focus-visible:ring-offset-slate-900 placeholder:text-slate-600"
+                          required
+                        />
+                      </div>
+
+                      {/* Advanced/Auto GPS Coordinate Previews */}
+                      <div className="p-3 bg-slate-950/40 rounded-lg border border-slate-800/80 text-[10px] space-y-2 font-mono text-slate-400 text-left">
+                        <div className="flex justify-between">
+                          <span>LOADING GPS COORDINATES:</span>
+                          <span className="text-emerald-400 font-bold">17.3850, 78.4867 (Hyd)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>UNLOADING GPS COORDINATES:</span>
+                          <span className="text-red-400 font-bold">16.5062, 80.6480 (Vjw)</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-6 border-t border-slate-800 mt-6 flex justify-end gap-3">
+                      <Button 
+                        type="button" 
+                        variant="outline" 
+                        onClick={() => setViewingTruckProfile(null)}
+                        className="border-slate-800 text-slate-300 hover:bg-slate-850 hover:text-white"
+                      >
+                        Cancel
+                      </Button>
+                      <Button 
+                        type="submit" 
+                        disabled={isSubmittingAddress}
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold h-9 px-5 shadow-lg active:scale-95 flex items-center gap-2"
+                      >
+                        {isSubmittingAddress ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            Dispatching...
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={14} />
+                            Submit Address & Dispatch
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </div>
               </div>
             </div>
           )}

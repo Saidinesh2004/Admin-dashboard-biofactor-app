@@ -150,7 +150,9 @@ export const apiClient = {
         status: b.status || 'Pending',
         userType: realRole,
         role: realRole,
+        userId: b.user_id || b.user?.id || b.user?.user_id || b.user_details?.id || '',
         transporterDetails: {
+          id: b.user_id || b.user?.id || b.user?.user_id || b.user_details?.id || '',
           companyName: realName,
           ownerName: b.user?.name || b.owner_name || 'Owner',
           fleetSize: Number(b.fleet_size || (realRole === 'Driver' ? 1 : 10)),
@@ -333,5 +335,24 @@ export const apiClient = {
       throw new Error(`Failed to verify document: ${response.statusText}`);
     }
     return response.json();
-  }
+  },
+
+  /**
+   * Retrieves registered user details and KYC documents (GET /api/auth/profile/{user_id})
+   */
+  getProfileDetails: async (userId: string): Promise<any> => {
+    const response = await fetch(`${API_BASE_URL}/api/auth/profile/${userId}`, {
+      method: 'GET',
+      headers: getHeaders(),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch profile: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Returns current active base URL
+   */
+  getApiUrl: () => API_BASE_URL
 };
