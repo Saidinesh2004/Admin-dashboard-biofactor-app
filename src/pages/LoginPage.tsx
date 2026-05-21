@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { Lock, Mail, Loader2, ArrowRight, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useToast } from '@/hooks/use-toast';
+import { useTransporterStore } from '@/store/transporterStore';
+import { useOnboardingStore } from '@/store/onboardingStore';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuthStore();
@@ -21,16 +23,56 @@ export const LoginPage: React.FC = () => {
     // Simulate backend credentials verification (800ms delay)
     setTimeout(() => {
       setIsLoading(false);
-      const mockToken = 'mock_jwt_token_biofactor_superadmin';
-      login(mockToken);
       
-      toast({
-        title: "Access Granted",
-        description: "Welcome back, Dinesh Kumar. Session established successfully.",
-        variant: "default",
-      });
+      // 1. Check default admin credentials
+      if (email === 'dinesh.kumar@biofactor.in' && (password === 'admin123' || password === '••••••••')) {
+        login('mock_jwt_token_biofactor_superadmin');
+        toast({
+          title: "Access Granted",
+          description: "Welcome back, Dinesh Kumar. Session established successfully.",
+        });
+        navigate('/');
+        return;
+      }
 
-      navigate('/');
+      // 2. Check transporters/drivers in store
+      const transporters = useTransporterStore.getState().transporters;
+      const matchTransporter = transporters.find(
+        t => t.email.toLowerCase() === email.toLowerCase() && t.password === password
+      );
+
+      if (matchTransporter) {
+        login(`mock_jwt_token_${matchTransporter.id}`);
+        toast({
+          title: "Access Granted",
+          description: `Welcome back, ${matchTransporter.ownerName} (${matchTransporter.role || 'Transporter'}). Session established.`,
+        });
+        navigate('/');
+        return;
+      }
+
+      // 3. Check onboarding queue (unapproved/pending accounts)
+      const queue = useOnboardingStore.getState().onboardingQueue;
+      const matchQueue = queue.find(
+        q => q.data.email.toLowerCase() === email.toLowerCase() && q.data.password === password
+      );
+
+      if (matchQueue) {
+        login(`mock_jwt_token_${matchQueue.id}`);
+        toast({
+          title: "Access Granted",
+          description: `Welcome back, ${matchQueue.data.ownerName} (${matchQueue.data.role || 'User'}). Session established.`,
+        });
+        navigate('/');
+        return;
+      }
+
+      // If no matching account found, show error
+      toast({
+        title: "Access Denied",
+        description: "Invalid email or password. Please verify the credentials extracted from your Excel spreadsheet.",
+        variant: "destructive"
+      });
     }, 850);
   };
 

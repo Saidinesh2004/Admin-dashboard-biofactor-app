@@ -1,8 +1,12 @@
+import * as XLSX from 'xlsx';
+
 export interface OCRExtractedData {
   companyName: string;
   ownerName: string;
+  name?: string;
   mobile: string;
   whatsapp: string;
+  password?: string;
   email: string;
   address: string;
   city: string;
@@ -22,9 +26,81 @@ export interface OCRExtractedData {
   rcUrl?: string;
   insuranceExpiry: string;
   rcExpiry: string;
+  role?: 'Driver' | 'Transporter';
+  whatsapp_available?: boolean;
+  verifiedDocuments?: string[];
+  rejectedDocuments?: string[];
 }
 
 export const ocrService = {
+  /**
+   * Reads a physical Excel/CSV spreadsheet and extracts all rows of drivers/transporters.
+   */
+  extractExcelData: async (file: File): Promise<OCRExtractedData[]> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const data = new Uint8Array(e.target?.result as ArrayBuffer);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet);
+          
+          const parsedRecords: OCRExtractedData[] = rawRows.map((row, index) => {
+            const parsedName = String(row['name'] || row['Name'] || `User ${index + 1}`).trim();
+            const parsedMobile = String(row['mobile'] || row['Mobile'] || '').trim();
+            const parsedPassword = String(row['password'] || row['Password'] || 'password123').trim();
+            const parsedEmail = String(row['email'] || row['Email'] || '').trim();
+            const parsedCity = String(row['city'] || row['City'] || '').trim();
+            const parsedState = String(row['state'] || row['State'] || '').trim();
+            const parsedRole = String(row['role'] || row['Role'] || 'Driver').trim();
+            
+            // Parse whatsapp_available to boolean
+            const rawWa = row['whatsapp_available'] ?? row['WhatsApp Available'] ?? row['whatsapp'] ?? true;
+            const parsedWa = rawWa === true || String(rawWa).toLowerCase() === 'true' || String(rawWa) === '1' || String(rawWa).toLowerCase() === 'yes';
+
+            return {
+              name: parsedName,
+              companyName: parsedName, // fallback for UI components
+              ownerName: parsedName,   // fallback for UI components
+              mobile: parsedMobile,
+              whatsapp: parsedWa ? parsedMobile : '',
+              password: parsedPassword,
+              email: parsedEmail,
+              city: parsedCity,
+              state: parsedState,
+              role: (parsedRole.toLowerCase().includes('driver') ? 'Driver' : 'Transporter') as 'Driver' | 'Transporter',
+              whatsapp_available: parsedWa,
+              
+              // Default scaffolding fields to satisfy UI models
+              address: 'Spreadsheet Bulk Registry',
+              fleetSize: 1,
+              panNumber: 'PENDING',
+              gstNumber: 'PENDING',
+              bankName: 'SBI Bank',
+              bankAccount: '',
+              ifsc: '',
+              aadhaarNumber: '',
+              aadhaarUrl: "/mock-docs/aadhaar_verified.jpg",
+              panUrl: "/mock-docs/pan_verified.jpg",
+              gstUrl: "/mock-docs/gst_verified.jpg",
+              chequeUrl: "/mock-docs/cheque_verified.jpg",
+              insuranceUrl: "/mock-docs/insurance_verified.jpg",
+              rcUrl: "/mock-docs/rc_verified.jpg",
+              insuranceExpiry: "2027-10-12",
+              rcExpiry: "2028-04-30"
+            };
+          });
+          resolve(parsedRecords);
+        } catch (error) {
+          reject(new Error("Spreadsheet parsing failed: " + error));
+        }
+      };
+      reader.onerror = () => reject(new Error("File reading failed"));
+      reader.readAsArrayBuffer(file);
+    });
+  },
   /**
    * Simulates Tesseract OCR processing on uploaded files.
    * Generates mock carrier details based on file type and name.

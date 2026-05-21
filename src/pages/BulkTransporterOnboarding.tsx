@@ -12,7 +12,6 @@ import type { OnboardingTransporter } from '../store/onboardingStore';
 import { useVerificationStore } from '../store/verificationStore';
 import { ocrService } from '../services/ocrService';
 import { AIScanningHUD } from '../components/aiVerification/AIScanningHUD';
-import { DocumentComparativeInspector } from '../components/documentPreview/DocumentComparativeInspector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +32,7 @@ export default function BulkTransporterOnboarding() {
     addOnboardingBatch,
     updateQueueRecord,
     deleteQueueRecord,
+    deleteUploadHistory,
     approveQueueRecord,
     rejectQueueRecord,
     submitAllVerified
@@ -43,8 +43,8 @@ export default function BulkTransporterOnboarding() {
 
   // Component State
   const [selectedFile, setSelectedFile] = useState<{ name: string; size: string } | null>(null);
+  const [selectedFileObj, setSelectedFileObj] = useState<File | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [inspectorRecordId, setInspectorRecordId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -52,21 +52,14 @@ export default function BulkTransporterOnboarding() {
   const [rejectingId, setRejectingId] = useState<string | null>(null);
   const [rejectionReasonInput, setRejectionReasonInput] = useState('');
 
-  // Active Inspector carrier
-  const activeInspectorCarrier = useMemo(() => {
-    return onboardingQueue.find(item => item.id === inspectorRecordId) || null;
-  }, [inspectorRecordId, onboardingQueue]);
-
   // Dynamic KPI Card Calculations
   const stats = useMemo(() => {
     const totalQueue = onboardingQueue.length;
     const aiVerified = onboardingQueue.filter(item => item.report.status === 'AI Verified').length;
     const needsReview = onboardingQueue.filter(item => item.report.status === 'Needs Manual Review').length;
     const rejected = onboardingQueue.filter(item => item.report.status === 'Rejected').length;
-    const duplicate = onboardingQueue.filter(item => item.report.status === 'Duplicate Found').length;
-    const expired = onboardingQueue.filter(item => item.report.status === 'Expired Documents').length;
 
-    return { totalQueue, aiVerified, needsReview, rejected, duplicate, expired };
+    return { totalQueue, aiVerified, needsReview, rejected };
   }, [onboardingQueue]);
 
   // Drag & Drop handlers
@@ -85,14 +78,14 @@ export default function BulkTransporterOnboarding() {
     
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       const file = e.dataTransfer.files[0];
-      const valid = ['.pdf', '.doc', '.docx', '.xlsx', '.csv', '.jpg', '.jpeg', '.png'].some(ext => 
+      const valid = ['.xlsx', '.xls'].some(ext => 
         file.name.toLowerCase().endsWith(ext)
       );
 
       if (!valid) {
         toast({
           title: "Unsupported File Format",
-          description: "Please upload PDF, Word docs, Excel sheets, or image archives.",
+          description: "Only Excel spreadsheets (.xlsx, .xls) are allowed.",
           variant: "destructive"
         });
         return;
@@ -104,8 +97,32 @@ export default function BulkTransporterOnboarding() {
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      triggerScanner(e.target.files[0]);
+      const file = e.target.files[0];
+      const valid = ['.xlsx', '.xls'].some(ext => 
+        file.name.toLowerCase().endsWith(ext)
+      );
+
+      if (!valid) {
+        toast({
+          title: "Unsupported File Format",
+          description: "Only Excel spreadsheets (.xlsx, .xls) are allowed.",
+          variant: "destructive"
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      triggerScanner(file);
     }
+  };
+
+  const handleDeleteHistory = (id: string, fileName: string) => {
+    deleteUploadHistory(id);
+    toast({
+      title: "Registry Removed",
+      description: `Successfully removed ${fileName} and cleared its extracted queue records.`,
+      className: "bg-slate-900 text-white border-none font-semibold shadow-md"
+    });
   };
 
   const triggerScanner = (file: File) => {
@@ -114,37 +131,39 @@ export default function BulkTransporterOnboarding() {
       : `${(file.size / 1024).toFixed(0)} KB`;
     
     setSelectedFile({ name: file.name, size: sizeStr });
+    setSelectedFileObj(file);
     setScanning(true);
     toast({
-      title: "File Upload Complete",
-      description: "Triggering high-precision AI/OCR scan...",
+      title: "Spreadsheet Uploaded",
+      description: "Extracting registry records via dynamic sheet parser...",
       className: "bg-slate-900 text-white border-none font-semibold"
     });
   };
 
   const handleScanComplete = async () => {
-    if (!selectedFile) return;
+    if (!selectedFileObj) return;
 
     try {
-      // Fetch extracted mock details
-      const extracted = await ocrService.extractTransporterData(selectedFile.name, selectedFile.size);
+      // Fetch extracted details using SheetJS
+      const extracted = await ocrService.extractExcelData(selectedFileObj);
       
       // Inject to Onboarding Store queue (also triggers AI verification automatically inside)
-      addOnboardingBatch(selectedFile.name, selectedFile.size, extracted);
+      addOnboardingBatch(selectedFileObj.name, selectedFile?.size || '0 KB', extracted);
       
       toast({
-        title: "AI Analysis Complete",
-        description: `Successfully analyzed registration batch from ${selectedFile.name}.`,
+        title: "Excel Data Extracted",
+        description: `Successfully parsed ${extracted.length} records from ${selectedFileObj.name}.`,
         className: "bg-green-600 text-white border-none font-semibold shadow-lg"
       });
     } catch (err) {
       toast({
-        title: "Scan Extraction Failed",
-        description: "An error occurred during OCR text extraction.",
+        title: "Excel Extraction Failed",
+        description: "An error occurred during spreadsheet rows extraction.",
         variant: "destructive"
       });
     } finally {
       setSelectedFile(null);
+      setSelectedFileObj(null);
     }
   };
 
@@ -152,11 +171,19 @@ export default function BulkTransporterOnboarding() {
   const filteredQueue = useMemo(() => {
     return onboardingQueue.filter(item => {
       // 1. Search filter
+      const nameVal = item.data.name || item.data.companyName || '';
+      const emailVal = item.data.email || '';
+      const mobileVal = item.data.mobile || '';
+      const cityVal = item.data.city || '';
+      const stateVal = item.data.state || '';
+      const roleVal = item.data.role || '';
       const searchMatch = 
-        item.data.companyName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.data.ownerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.data.gstNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        item.data.panNumber.toLowerCase().includes(searchQuery.toLowerCase());
+        nameVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        emailVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        mobileVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        cityVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        stateVal.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        roleVal.toLowerCase().includes(searchQuery.toLowerCase());
 
       if (!searchMatch) return false;
 
@@ -164,12 +191,8 @@ export default function BulkTransporterOnboarding() {
       switch (activeFilter) {
         case 'AI_VERIFIED':
           return item.report.status === 'AI Verified';
-        case 'NEEDS_REVIEW':
-          return item.report.status === 'Needs Manual Review';
         case 'REJECTED':
           return item.report.status === 'Rejected';
-        case 'DUPLICATES':
-          return item.report.status === 'Duplicate Found';
         default:
           return true;
       }
@@ -241,39 +264,27 @@ export default function BulkTransporterOnboarding() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 tracking-tight flex items-center gap-2">
-            <ShieldCheck className="text-indigo-600" />
-            AI Transporter Verification Console
+            <Users className="text-indigo-600" />
+            Bulk User Registration Console
           </h1>
-          <p className="text-sm text-gray-500 mt-1">Smart onboarding registry powered by visual OCR, tax portals integrations, and forgery check engines.</p>
+          <p className="text-sm text-gray-500 mt-1">Bulk user onboarding console. Add, edit, and authorize users from Excel spreadsheets.</p>
         </div>
       </div>
 
       {/* Top KPI Cards Row */}
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-slate-900 text-white relative overflow-hidden">
           <div className="absolute right-2 bottom-2 text-slate-800 pointer-events-none"><CloudLightning size={48} /></div>
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest relative z-10">Total Extracted</p>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest relative z-10">Total Extracted Users</p>
           <h3 className="text-2xl font-extrabold font-mono text-emerald-400 relative z-10">{stats.totalQueue}</h3>
         </Card>
         <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-white border-l-4 border-emerald-500">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">AI Verified</p>
-          <h3 className="text-2xl font-extrabold font-mono text-emerald-600">{stats.aiVerified}</h3>
-        </Card>
-        <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-white border-l-4 border-amber-500">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Needs Review</p>
-          <h3 className="text-2xl font-extrabold font-mono text-amber-600">{stats.needsReview}</h3>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Pending Activation</p>
+          <h3 className="text-2xl font-extrabold font-mono text-emerald-600">{stats.aiVerified + stats.needsReview}</h3>
         </Card>
         <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-white border-l-4 border-rose-500">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Auto Rejected</p>
+          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Rejected / Deleted</p>
           <h3 className="text-2xl font-extrabold font-mono text-rose-600">{stats.rejected}</h3>
-        </Card>
-        <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-white border-l-4 border-purple-500">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Duplicate Flagged</p>
-          <h3 className="text-2xl font-extrabold font-mono text-purple-600">{stats.duplicate}</h3>
-        </Card>
-        <Card className="border-0 shadow-xs p-4 space-y-1.5 bg-white border-l-4 border-red-500">
-          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Expired Document</p>
-          <h3 className="text-2xl font-extrabold font-mono text-red-600">{stats.expired}</h3>
         </Card>
       </div>
 
@@ -287,9 +298,9 @@ export default function BulkTransporterOnboarding() {
           <Card className="border-0 shadow-sm bg-white overflow-hidden">
             <CardHeader className="bg-slate-950 text-white p-5">
               <CardTitle className="text-sm font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-                <Layers size={14} className="text-indigo-400 animate-pulse" /> Document Dropzone
+                <Layers size={14} className="text-indigo-400 animate-pulse" /> Spreadsheet Dropzone
               </CardTitle>
-              <CardDescription className="text-xs text-slate-400">PDF registries, Excel, CSV, or zip files of Aadhaar/PAN photo cards.</CardDescription>
+              <CardDescription className="text-xs text-slate-400">Excel spreadsheets containing driver and transporter data.</CardDescription>
             </CardHeader>
             <CardContent className="p-5">
               <div 
@@ -305,7 +316,7 @@ export default function BulkTransporterOnboarding() {
                   type="file" 
                   ref={fileInputRef} 
                   onChange={handleFileChange}
-                  accept=".pdf,.doc,.docx,.xlsx,.csv,.jpg,.jpeg,.png" 
+                  accept=".xlsx,.xls" 
                   className="hidden" 
                 />
                 
@@ -313,8 +324,8 @@ export default function BulkTransporterOnboarding() {
                   <Upload size={24} className="text-indigo-500 animate-bounce" />
                 </div>
                 <div>
-                  <p className="text-xs font-bold text-slate-800">Drag & Drop transporter records here</p>
-                  <p className="text-[10px] text-slate-400 mt-1">Supports PDF, spreadsheet sheets, or JPG docs</p>
+                  <p className="text-xs font-bold text-slate-800">Drag & Drop spreadsheet records here</p>
+                  <p className="text-[10px] text-slate-400 mt-1">Supports Excel spreadsheets (.xlsx, .xls)</p>
                 </div>
               </div>
             </CardContent>
@@ -324,7 +335,7 @@ export default function BulkTransporterOnboarding() {
           <Card className="border-0 shadow-sm bg-white overflow-hidden">
             <CardHeader className="border-b border-slate-100 p-5">
               <CardTitle className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                <History size={15} className="text-indigo-500" /> AI verification Logs
+                <History size={15} className="text-indigo-500" /> Onboarding Logs
               </CardTitle>
               <CardDescription className="text-xs text-slate-400">Previous parsed registries and their verification yields.</CardDescription>
             </CardHeader>
@@ -342,7 +353,18 @@ export default function BulkTransporterOnboarding() {
                         </p>
                         <p className="text-[9px] text-slate-400 font-mono">ID: {item.id} | Size: {item.fileSize}</p>
                       </div>
-                      <Badge variant="outline" className="text-[8px] font-mono px-1 py-0 uppercase">Extracted</Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" className="text-[8px] font-mono px-1 py-0 uppercase">Extracted</Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteHistory(item.id, item.fileName)}
+                          className="h-5 w-5 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded"
+                          title="Remove spreadsheet and its queue records"
+                        >
+                          <Trash2 size={11} />
+                        </Button>
+                      </div>
                     </div>
                     <div className="flex justify-between items-center text-[10px] border-t border-slate-200/50 pt-2 mt-1">
                       <span className="text-slate-400">{item.uploadDate}</span>
@@ -395,7 +417,7 @@ export default function BulkTransporterOnboarding() {
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search by Company, Owner, Tax ID..."
+                    placeholder="Search by Name, Email, City..."
                     className="pl-9 h-8 bg-slate-50 border-slate-200 text-xs w-full focus:bg-white"
                   />
                 </div>
@@ -403,11 +425,9 @@ export default function BulkTransporterOnboarding() {
                 {/* Queue Filter Tabs */}
                 <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200 gap-0.5 overflow-x-auto self-start md:self-auto">
                   {[
-                    { id: 'ALL', label: 'All Queue' },
-                    { id: 'AI_VERIFIED', label: 'AI Verified' },
-                    { id: 'NEEDS_REVIEW', label: 'Needs Review' },
-                    { id: 'REJECTED', label: 'Rejected' },
-                    { id: 'DUPLICATES', label: 'Duplicates' }
+                    { id: 'ALL', label: 'All Users' },
+                    { id: 'AI_VERIFIED', label: 'Ready to Activate' },
+                    { id: 'REJECTED', label: 'Rejected' }
                   ].map(tab => (
                     <button
                       key={tab.id}
@@ -439,10 +459,10 @@ export default function BulkTransporterOnboarding() {
                   <Table>
                     <TableHeader className="bg-slate-50/50">
                       <TableRow>
-                        <TableHead className="font-bold text-gray-500 uppercase text-[9px] pl-5 py-3">Transporter / Owner</TableHead>
-                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Tax Registry details</TableHead>
-                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Score & Trust</TableHead>
-                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Audit Status</TableHead>
+                        <TableHead className="font-bold text-gray-500 uppercase text-[9px] pl-5 py-3">User Details</TableHead>
+                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Contact Info</TableHead>
+                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Location</TableHead>
+                        <TableHead className="font-bold text-gray-500 uppercase text-[9px]">Credentials</TableHead>
                         <TableHead className="font-bold text-gray-500 uppercase text-[9px] text-right pr-5">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
@@ -450,7 +470,6 @@ export default function BulkTransporterOnboarding() {
                       <AnimatePresence initial={false}>
                         {filteredQueue.map((item) => {
                           const isRejected = item.report.status === 'Rejected';
-                          const isDuplicate = item.report.status === 'Duplicate Found';
 
                           return (
                             <motion.tr 
@@ -461,118 +480,89 @@ export default function BulkTransporterOnboarding() {
                               className="hover:bg-slate-50/50 transition-all border-b"
                             >
                               
-                              {/* Company / Owner Name */}
+                              {/* User Details */}
                               <TableCell className="pl-5 py-3.5">
                                 <div className="space-y-0.5">
-                                  <p className="text-xs font-bold text-slate-800">{item.data.companyName}</p>
-                                  <p className="text-[10px] text-slate-400 font-medium">Owner: {item.data.ownerName}</p>
+                                  <div className="flex items-center gap-2">
+                                    <p className="text-xs font-bold text-slate-800">{item.data.name || item.data.companyName}</p>
+                                    <Badge className={`${item.data.role === 'Driver' ? 'bg-blue-50 text-blue-700 border-blue-200/50' : 'bg-indigo-50 text-indigo-700 border-indigo-200/50'} border font-bold text-[9px] px-1.5 py-0.5 rounded-full`}>
+                                      {item.data.role || 'Driver'}
+                                    </Badge>
+                                  </div>
                                   <p className="text-[9px] text-slate-400 font-mono">File: {item.sourceFile}</p>
                                 </div>
                               </TableCell>
 
-                              {/* Tax IDs */}
+                              {/* Contact Info */}
                               <TableCell>
-                                <div className="space-y-0.5 font-mono text-[10px]">
-                                  <p className="text-slate-700">GST: <span className="font-bold">{item.data.gstNumber || 'MISSING'}</span></p>
-                                  <p className="text-slate-400">PAN: {item.data.panNumber || 'MISSING'}</p>
-                                  <p className="text-slate-400">Fleet: {item.data.fleetSize} Trucks</p>
+                                <div className="space-y-0.5 text-[10px]">
+                                  <p className="text-slate-700 font-medium">Mob: <span className="font-bold">{item.data.mobile || '—'}</span></p>
+                                  <p className="text-slate-500 font-medium">Mail: {item.data.email || '—'}</p>
+                                  {item.data.whatsapp ? (
+                                    <p className="text-emerald-600 font-semibold flex items-center gap-1 text-[9px] mt-0.5">
+                                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                      WA: {item.data.whatsapp}
+                                    </p>
+                                  ) : (
+                                    <p className="text-slate-400 font-semibold flex items-center gap-1 text-[9px] mt-0.5">
+                                      <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-300"></span>
+                                      WA: No
+                                    </p>
+                                  )}
                                 </div>
                               </TableCell>
 
-                              {/* Trust Indicator / Score */}
+                              {/* Location */}
                               <TableCell>
-                                <div className="space-y-1.5 max-w-[120px]">
-                                  <div className="flex justify-between items-center text-[9px] font-mono">
-                                    <span className="text-slate-400">Audit Trust:</span>
-                                    <span className={`font-bold ${item.report.score >= 80 ? 'text-emerald-600' : item.report.score >= 50 ? 'text-amber-500' : 'text-rose-600'}`}>
-                                      {item.report.score}%
-                                    </span>
-                                  </div>
-                                  <div className="w-full h-1 bg-slate-100 rounded-full overflow-hidden border border-slate-200/30">
-                                    <div 
-                                      className={`h-full rounded-full transition-all duration-500 ${
-                                        item.report.score >= 80 ? 'bg-emerald-500' : item.report.score >= 50 ? 'bg-amber-500' : 'bg-rose-500'
-                                      }`}
-                                      style={{ width: `${item.report.score}%` }}
-                                    />
-                                  </div>
+                                <div className="space-y-0.5 text-[10px] text-slate-700">
+                                  <p className="font-bold">{item.data.city || '—'}</p>
+                                  <p className="text-slate-400 font-medium">{item.data.state || '—'}</p>
                                 </div>
                               </TableCell>
 
-                              {/* Status Badge & Issues */}
+                              {/* Credentials & Status */}
                               <TableCell>
                                 <div className="space-y-1">
+                                  <div className="font-mono text-[10px] text-slate-700 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-200/50 inline-block">
+                                    Password: {item.data.password || 'password123'}
+                                  </div>
                                   <div>{getStatusBadge(item.report.status)}</div>
                                   
-                                  {/* Error/Warning indicators */}
-                                  {item.report.issues.length > 0 && (
-                                    <div className="space-y-0.5">
-                                      {item.report.issues.slice(0, 1).map((issue, idx) => (
-                                        <p key={idx} className="text-[9px] text-rose-600 font-semibold leading-tight max-w-[150px] truncate" title={issue.message}>
-                                          ⚠️ {issue.message}
-                                        </p>
-                                      ))}
-                                      {item.report.issues.length > 1 && (
-                                        <p className="text-[8px] text-indigo-500 font-bold">+{item.report.issues.length - 1} more audits warnings</p>
-                                      )}
-                                    </div>
-                                  )}
-
                                   {isRejected && item.report.rejectionReason && (
-                                    <p className="text-[8px] bg-rose-50 border border-rose-100 text-rose-700 px-1.5 py-0.5 rounded max-w-[150px] leading-tight font-medium">
+                                    <p className="text-[8px] bg-rose-50 border border-rose-100 text-rose-700 px-1.5 py-0.5 rounded max-w-[150px] leading-tight font-medium mt-1">
                                       Reason: {item.report.rejectionReason}
                                     </p>
                                   )}
                                 </div>
                               </TableCell>
 
-                              {/* Grid Row Actions */}
+                              {/* Row Actions */}
                               <TableCell className="text-right pr-5">
                                 <div className="flex justify-end gap-1.5">
-                                  {/* View Comparative Inspector (Eye) */}
-                                  <Button 
-                                    onClick={() => setInspectorRecordId(item.id)}
-                                    size="icon" 
-                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 h-7 w-7 rounded border border-slate-200/50 shadow-2xs"
-                                    title="Open Visual OCR Comparative Inspector"
-                                  >
-                                    <Eye size={12} />
-                                  </Button>
-
-                                  {/* Request Re-upload (Refresh) */}
-                                  <Button 
-                                    onClick={() => toast({ title: "Re-upload Triggered", description: `Dispatched document asset re-upload request SMS to ${item.data.ownerName}.` })}
-                                    size="icon" 
-                                    className="bg-slate-100 hover:bg-slate-200 text-slate-700 h-7 w-7 rounded border border-slate-200/50 shadow-2xs"
-                                    title="Request High-Res Documents Re-upload"
-                                  >
-                                    <RefreshCcw size={12} />
-                                  </Button>
-
                                   {/* Quick Approve (Check) */}
                                   <Button 
-                                    onClick={() => handleApproveRecord(item.id, item.data.companyName)}
-                                    disabled={isRejected || isDuplicate}
+                                    onClick={() => handleApproveRecord(item.id, item.data.name || item.data.companyName)}
+                                    disabled={isRejected}
                                     size="icon" 
                                     className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 h-7 w-7 rounded border border-emerald-100 shadow-2xs"
-                                    title="Approve & Authorize Carrier Partner"
+                                    title="Activate User Partner"
                                   >
                                     <Check size={12} />
                                   </Button>
 
-                                  {/* Manual Reject Dialogue Trigger (X) */}
+                                  {/* Manual Reject (X) */}
                                   <Button 
                                     onClick={() => {
                                       if (isRejected) {
                                         deleteQueueRecord(item.id);
-                                        toast({ title: "Record Deleted", description: "Transporter entry deleted from queue." });
+                                        toast({ title: "Record Deleted", description: "User entry deleted from queue." });
                                       } else {
                                         setRejectingId(item.id);
                                       }
                                     }}
                                     size="icon" 
                                     className="bg-rose-50 hover:bg-rose-100 text-rose-700 h-7 w-7 rounded border border-rose-100 shadow-2xs"
-                                    title={isRejected ? "Delete Record Permanently" : "Manual Reject and File Incident"}
+                                    title={isRejected ? "Delete Record Permanently" : "Manual Reject User"}
                                   >
                                     <X size={12} />
                                   </Button>
@@ -636,20 +626,7 @@ export default function BulkTransporterOnboarding() {
         onScanComplete={handleScanComplete} 
       />
 
-      {/* Slider Visual Comparative inspector from the right */}
-      <AnimatePresence>
-        {activeInspectorCarrier && (
-          <DocumentComparativeInspector
-            carrier={activeInspectorCarrier}
-            onClose={() => setInspectorRecordId(null)}
-            onFieldUpdate={(field, value) => {
-              if (inspectorRecordId) {
-                updateQueueRecord(inspectorRecordId, { [field]: value });
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {/* Visual Comparative inspector removed */}
 
     </div>
   );

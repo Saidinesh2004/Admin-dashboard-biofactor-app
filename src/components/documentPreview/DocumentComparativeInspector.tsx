@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 interface DocumentComparativeInspectorProps {
   carrier: OnboardingTransporter;
   onClose: () => void;
-  onFieldUpdate: (field: string, value: string | number) => void;
+  onFieldUpdate: (field: string, value: any) => void;
 }
 
 export const DocumentComparativeInspector: React.FC<DocumentComparativeInspectorProps> = ({
@@ -190,6 +190,10 @@ export const DocumentComparativeInspector: React.FC<DocumentComparativeInspector
         {(['gstCert', 'panCard', 'aadhaar', 'insurance', 'vehicleRc'] as const).map(tab => {
           const isActive = activeDocType === tab;
           const label = tab === 'gstCert' ? 'GST Cert' : tab === 'panCard' ? 'PAN Card' : tab === 'aadhaar' ? 'Aadhaar' : tab === 'insurance' ? 'Insurance' : 'Vehicle RC';
+          const fieldKey = tab === 'gstCert' ? 'gstNumber' : tab === 'panCard' ? 'panNumber' : tab === 'aadhaar' ? 'aadhaarNumber' : tab === 'insurance' ? 'insuranceExpiry' : 'rcExpiry';
+          
+          const isVerified = carrier.data.verifiedDocuments?.includes(fieldKey);
+          const isRejected = carrier.data.rejectedDocuments?.includes(fieldKey);
           const hasError = carrier.report.issues.some(i => i.field === tab || (tab === 'gstCert' && i.field === 'gstNumber') || (tab === 'panCard' && i.field === 'panNumber') || (tab === 'aadhaar' && i.field === 'aadhaarNumber'));
 
           return (
@@ -207,7 +211,13 @@ export const DocumentComparativeInspector: React.FC<DocumentComparativeInspector
               }`}
             >
               {label}
-              {hasError && <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />}
+              {isVerified ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              ) : isRejected ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+              ) : hasError ? (
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+              ) : null}
             </button>
           );
         })}
@@ -281,10 +291,34 @@ export const DocumentComparativeInspector: React.FC<DocumentComparativeInspector
         <div className="flex items-center gap-1.5 font-mono text-[10px]">
           <span className="text-slate-400">OCR Reliability:</span>
           <span className={`font-bold ${carrier.report.score >= 80 ? 'text-emerald-400' : carrier.report.score >= 50 ? 'text-amber-400' : 'text-rose-500'}`}>
-            {carrier.report.confidenceScore}% Acc
+            {carrier.report.score}% trust
           </span>
         </div>
         <div className="flex gap-2">
+          <Button
+            onClick={() => {
+              const fieldKey = activeDocType === 'gstCert' ? 'gstNumber' : activeDocType === 'panCard' ? 'panNumber' : activeDocType === 'aadhaar' ? 'aadhaarNumber' : activeDocType === 'insurance' ? 'insuranceExpiry' : 'rcExpiry';
+              const currentVerified = carrier.data.verifiedDocuments || [];
+              const currentRejected = carrier.data.rejectedDocuments || [];
+              onFieldUpdate('rejectedDocuments', [...currentRejected.filter(r => r !== fieldKey), fieldKey]);
+              onFieldUpdate('verifiedDocuments', currentVerified.filter(v => v !== fieldKey));
+            }}
+            className="bg-rose-950 hover:bg-rose-900 border border-rose-800 text-rose-300 text-[10px] font-bold uppercase tracking-wider h-8"
+          >
+            Reject Doc
+          </Button>
+          <Button
+            onClick={() => {
+              const fieldKey = activeDocType === 'gstCert' ? 'gstNumber' : activeDocType === 'panCard' ? 'panNumber' : activeDocType === 'aadhaar' ? 'aadhaarNumber' : activeDocType === 'insurance' ? 'insuranceExpiry' : 'rcExpiry';
+              const currentVerified = carrier.data.verifiedDocuments || [];
+              const currentRejected = carrier.data.rejectedDocuments || [];
+              onFieldUpdate('verifiedDocuments', [...currentVerified.filter(v => v !== fieldKey), fieldKey]);
+              onFieldUpdate('rejectedDocuments', currentRejected.filter(r => r !== fieldKey));
+            }}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-bold uppercase tracking-wider h-8"
+          >
+            Verify Doc
+          </Button>
           <Button
             onClick={() => {
               const link = document.createElement('a');
@@ -296,7 +330,7 @@ export const DocumentComparativeInspector: React.FC<DocumentComparativeInspector
             }}
             className="bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-[10px] font-bold uppercase tracking-wider h-8 flex items-center gap-1.5"
           >
-            <Download size={12} /> Download Doc
+            <Download size={12} /> Download
           </Button>
           <Button 
             onClick={onClose}

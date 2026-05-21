@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import { 
@@ -50,6 +50,8 @@ export default function ManageLoads() {
   const [bidSearch, setBidSearch] = useState('');
   const [bidSort, setBidSort] = useState<'asc' | 'desc'>('asc');
 
+  const lastFetchedLoadIdRef = useRef<string | null>(null);
+
   // Synchronize selectedLoadId with localStorage
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -61,12 +63,17 @@ export default function ManageLoads() {
     }
   }, [selectedLoadId]);
 
-  // Fetch live bids whenever a load is selected for viewing
+  // Fetch live bids whenever a load is selected for viewing and exists in the store
   useEffect(() => {
-    if (selectedLoadId) {
+    const hasLoad = loads.some(l => l.id === selectedLoadId || l.bidId === selectedLoadId);
+    if (selectedLoadId && hasLoad && lastFetchedLoadIdRef.current !== selectedLoadId) {
+      lastFetchedLoadIdRef.current = selectedLoadId;
       fetchBidsForLoad(selectedLoadId);
     }
-  }, [selectedLoadId, fetchBidsForLoad]);
+    if (!selectedLoadId) {
+      lastFetchedLoadIdRef.current = null;
+    }
+  }, [selectedLoadId, loads, fetchBidsForLoad]);
 
   // Auto-close expired loads on mount and every 60 seconds
   useEffect(() => {
@@ -95,6 +102,7 @@ export default function ManageLoads() {
   
   const [rejectConfirmBid, setRejectConfirmBid] = useState<{ loadId: string; bidId: string; transporterName: string } | null>(null);
   const [viewingTransporter, setViewingTransporter] = useState<any | null>(null);
+  const [previewDoc, setPreviewDoc] = useState<{ type: 'rc' | 'insurance'; title: string } | null>(null);
 
   // Edit Load Form State
   const [editForm, setEditForm] = useState({
@@ -261,14 +269,14 @@ export default function ManageLoads() {
       case 'Approved':
       case 'Selected':
       case 'ACCEPTED':
-        return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold animate-pulse">Approved</Badge>;
+        return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">ACCEPTED</Badge>;
       case 'Rejected':
       case 'REJECTED':
-        return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold">Rejected</Badge>;
+        return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">REJECTED</Badge>;
       case 'Negotiating':
-        return <Badge className="bg-amber-100 text-amber-800 border-none px-2 py-0.5 text-xs font-bold">Negotiating</Badge>;
+        return <Badge className="bg-amber-100 text-amber-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">NEGOTIATING</Badge>;
       default:
-        return <Badge className="bg-gray-100 text-gray-800 border-none px-2 py-0.5 text-xs font-bold">Pending</Badge>;
+        return <Badge className="bg-gray-100 text-gray-800 border-none px-2 py-0.5 text-xs font-bold uppercase tracking-wider">PENDING</Badge>;
     }
   };
 
@@ -792,6 +800,35 @@ export default function ManageLoads() {
                               {isDriver ? 'Owner-Operator (Single Truck)' : `${selectedLoad.assignedTransporter.fleetSize} Heavy Commercials`}
                             </span>
                           </div>
+                          <div className={`border-t border-dashed pt-2.5 mt-2.5 space-y-2 ${isDriver ? 'border-indigo-200' : 'border-blue-200'}`}>
+                            <span className="text-[10px] font-bold tracking-wider opacity-60 uppercase block">Compliance & Dispatch Docs</span>
+                            <div className="grid grid-cols-2 gap-2">
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className={`h-8 text-[11px] font-bold bg-white flex items-center justify-center gap-1 ${
+                                  isDriver 
+                                    ? 'border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800' 
+                                    : 'border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800'
+                                }`}
+                                onClick={() => setPreviewDoc({ type: 'rc', title: 'Vehicle Registration Certificate (RC) Smart Card' })}
+                              >
+                                <ShieldCheck size={12} className={isDriver ? 'text-indigo-600' : 'text-blue-600'} /> View RC Card
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className={`h-8 text-[11px] font-bold bg-white flex items-center justify-center gap-1 ${
+                                  isDriver 
+                                    ? 'border-indigo-200 text-indigo-700 hover:bg-indigo-50 hover:text-indigo-800' 
+                                    : 'border-blue-200 text-blue-700 hover:bg-blue-50 hover:text-blue-800'
+                                }`}
+                                onClick={() => setPreviewDoc({ type: 'insurance', title: 'Commercial Vehicle Insurance Certificate' })}
+                              >
+                                <ShieldCheck size={12} className={isDriver ? 'text-indigo-600' : 'text-blue-600'} /> View Insurance
+                              </Button>
+                            </div>
+                          </div>
                         </CardContent>
                       </Card>
                     );
@@ -862,14 +899,13 @@ export default function ManageLoads() {
                         <TableHeader className="bg-slate-50 border-b">
                           <TableRow>
                             <TableHead className="font-bold text-slate-600 text-xs w-[60px] text-center">Rank</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">Users</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">Vehicle Type</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Name</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Role</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Bid Amount</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">Rate / T</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Total Amount</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Rating</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">Verification</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Status</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs text-right">Actions</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs text-right">Action</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -897,45 +933,38 @@ export default function ManageLoads() {
                                   </span>
                                 </TableCell>
 
-                                {/* Users Column (incorporating Transporters & Drivers) */}
+                                {/* Name */}
                                 <TableCell className="font-bold text-slate-800 text-xs">
-                                  <div className="flex flex-col gap-1">
-                                    <div className="flex items-center gap-1.5">
-                                      <span 
-                                        onClick={() => setViewingTransporter(bid.transporterDetails)}
-                                        className="hover:underline hover:text-green-700 cursor-pointer font-bold"
-                                      >
-                                        {bid.transporterName}
-                                      </span>
-                                      {(bid as any).role === 'Driver' ? (
-                                        <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 text-[9px] font-bold px-1.5 py-0">
-                                          Driver
-                                        </Badge>
-                                      ) : (
-                                        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 text-[9px] font-bold px-1.5 py-0">
-                                          Transporter
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <span className="text-[9px] text-slate-400 font-medium">Exp: {bid.experienceYears} Years</span>
-                                  </div>
+                                  <span 
+                                    onClick={() => setViewingTransporter(bid.transporterDetails)}
+                                    className="hover:underline hover:text-green-700 cursor-pointer font-bold"
+                                  >
+                                    {bid.transporterName}
+                                  </span>
                                 </TableCell>
 
-                                {/* Vehicle Type */}
-                                <TableCell className="text-xs text-slate-600 font-medium">
-                                  {bid.vehicleType}
+                                {/* Role */}
+                                <TableCell>
+                                  {(bid as any).role === 'Driver' ? (
+                                    <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 text-[10px] font-bold px-2 py-0.5">
+                                      Driver
+                                    </Badge>
+                                  ) : (
+                                    <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 text-[10px] font-bold px-2 py-0.5">
+                                      Transporter
+                                    </Badge>
+                                  )}
                                 </TableCell>
 
-                                {/* Bid Amount */}
+                                {/* Bid Amount (Quoted rate per tonne) */}
+                                <TableCell className="font-bold text-slate-700 font-mono text-xs">
+                                  ₹{bid.pricePerTonne.toLocaleString('en-IN')}/T
+                                </TableCell>
+
+                                {/* Total Amount (Quoted rate per tonne * total load tonnes) */}
                                 <TableCell className="font-bold text-green-700 font-mono text-xs">
-                                  ₹{bid.bidAmount.toLocaleString('en-IN')}
+                                  ₹{(bid.pricePerTonne * selectedLoad.tonnes).toLocaleString('en-IN')}
                                 </TableCell>
-
-                                {/* Rate Per Tonne */}
-                                <TableCell className="text-slate-600 font-mono text-xs">
-                                  ₹{bid.pricePerTonne}/T
-                                </TableCell>
-
 
                                 {/* Rating */}
                                 <TableCell>
@@ -945,29 +974,7 @@ export default function ManageLoads() {
                                   </div>
                                 </TableCell>
 
-                                {/* Verification Status Badges */}
-                                <TableCell>
-                                  <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                    {bid.verificationStatus.map((vStatus, idx) => {
-                                      const displayStatus = (bid as any).role === 'Driver' && vStatus === 'Trusted Transporter' ? 'Trusted Driver' : vStatus;
-                                      return (
-                                        <span 
-                                          key={idx} 
-                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
-                                            displayStatus === 'Trusted Transporter' || displayStatus === 'Trusted Driver' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                            displayStatus === 'KYC Verified' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                            displayStatus === 'Insurance Valid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-100 text-gray-600'
-                                          }`}
-                                        >
-                                          {displayStatus === 'KYC Verified' && <ShieldCheck size={9} />}
-                                          {displayStatus}
-                                        </span>
-                                      );
-                                    })}
-                                  </div>
-                                </TableCell>
-
-                                {/* Bid Status */}
+                                {/* Status */}
                                 <TableCell>
                                   {getBidStatusBadge(bid.status)}
                                 </TableCell>
@@ -1012,7 +1019,7 @@ export default function ManageLoads() {
                             
                             {filteredBids.length === 0 && (
                               <TableRow>
-                                <TableCell colSpan={10} className="h-32 text-center text-slate-400 italic">
+                                <TableCell colSpan={8} className="h-32 text-center text-slate-400 italic">
                                   No bids match your search query or filters.
                                 </TableCell>
                               </TableRow>
@@ -1412,6 +1419,191 @@ export default function ManageLoads() {
               Confirm Rejection
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DOCUMENT PREVIEW MODAL: High-fidelity interactive Inspector */}
+      <Dialog open={!!previewDoc} onOpenChange={(val) => !val && setPreviewDoc(null)}>
+        <DialogContent className="sm:max-w-[550px] border-0 rounded-2xl shadow-2xl overflow-hidden bg-slate-950 p-0 text-white">
+          {previewDoc && (
+            <div className="flex flex-col h-full font-sans">
+              {/* Top Title Bar */}
+              <div className="p-5 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="text-emerald-500 h-5 w-5 animate-pulse" />
+                  <div>
+                    <h3 className="text-sm font-bold tracking-tight text-white">{previewDoc.title}</h3>
+                    <p className="text-[10px] text-slate-400 font-medium">Secured & Encrypted Credentials Verification</p>
+                  </div>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setPreviewDoc(null)} 
+                  className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-800"
+                >
+                  <X size={16} />
+                </Button>
+              </div>
+
+              {/* Document Container */}
+              <div className="p-6 bg-slate-900/50 flex items-center justify-center min-h-[360px] overflow-hidden relative">
+                
+                {/* 1. VEHICLE RC SMART CARD */}
+                {previewDoc.type === 'rc' && (
+                  <div className="w-[440px] h-[260px] rounded-2xl bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 border border-slate-700/60 p-4 shadow-2xl flex flex-col justify-between relative overflow-hidden select-none">
+                    {/* Security Watermark Map Grid */}
+                    <div className="absolute inset-0 opacity-5 pointer-events-none bg-[radial-gradient(#e5e7eb_1px,transparent_1px)] [background-size:16px_16px]" />
+                    
+                    {/* Header */}
+                    <div className="border-b border-slate-800/80 pb-2 flex items-center justify-between z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="w-5 h-5 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-[10px] text-emerald-400 font-bold">印</div>
+                        <div>
+                          <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest leading-none">MINISTRY OF ROAD TRANSPORT & HIGHWAYS</p>
+                          <p className="text-[9px] font-extrabold text-white tracking-wider leading-none mt-0.5">GOVERNMENT OF INDIA</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[8px] font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 font-bold">
+                          RC VERIFIED
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Middle Section */}
+                    <div className="flex gap-4 items-center my-auto z-10">
+                      {/* Gold Chip Graphic */}
+                      <div className="w-12 h-9 rounded-md bg-gradient-to-br from-amber-300 via-yellow-400 to-amber-500 border border-amber-600/30 shadow-md relative flex items-center justify-center p-1 overflow-hidden shrink-0">
+                        {/* Microchip Tracks */}
+                        <div className="absolute inset-x-2 top-0 bottom-0 border-l border-r border-amber-700/30" />
+                        <div className="absolute inset-y-1.5 left-0 right-0 border-t border-b border-amber-700/30" />
+                        <div className="w-4 h-4 rounded-sm bg-amber-600/20 border border-amber-600/30 z-10" />
+                      </div>
+
+                      {/* Registration Plate */}
+                      <div className="flex-1">
+                        <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider leading-none">REGISTRATION NUMBER</p>
+                        <p className="text-xl font-extrabold font-mono text-white tracking-widest mt-1">
+                          MH-12-KL-3402
+                        </p>
+                        <p className="text-[9px] font-medium text-indigo-300 mt-0.5 leading-none">
+                          TATA LPT 3518 Cowl / HEAVY MOTOR VEHICLE
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Bottom Metadata grid */}
+                    <div className="grid grid-cols-3 gap-2 pt-2.5 border-t border-slate-800/80 z-10 text-[8px]">
+                      <div>
+                        <span className="text-slate-400 uppercase font-bold block">REGISTERED OWNER</span>
+                        <span className="font-extrabold text-white truncate block mt-0.5">
+                          {selectedLoad?.assignedTransporter?.companyName || 'Biofactor Transporter'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase font-bold block">REGISTRATION DATE</span>
+                        <span className="font-extrabold text-white block mt-0.5">12-Feb-2024</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase font-bold block">VALIDITY EXPIRE</span>
+                        <span className="font-extrabold text-emerald-400 block mt-0.5">11-Feb-2039</span>
+                      </div>
+                    </div>
+
+                    {/* Security Seals & Barcodes */}
+                    <div className="absolute right-3 top-12 opacity-30 flex flex-col items-center">
+                      <div className="w-10 h-10 rounded-full border-2 border-dashed border-indigo-400 flex items-center justify-center text-[7px] text-indigo-400 font-bold text-center rotate-12 leading-tight">
+                        STATE DEPT
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. INSURANCE POLICY SHEET */}
+                {previewDoc.type === 'insurance' && (
+                  <div className="w-[430px] h-[300px] rounded-xl bg-gradient-to-b from-white via-slate-50 to-white border-4 border-double border-slate-300 p-4 shadow-2xl flex flex-col justify-between text-slate-800 relative overflow-hidden select-none">
+                    {/* Header */}
+                    <div className="text-center border-b pb-2 border-slate-200 relative">
+                      <div className="flex items-center justify-center gap-1">
+                        <Award className="text-blue-700 h-4 w-4" />
+                        <h4 className="text-xs font-black tracking-widest text-blue-900 uppercase">ROYAL SECURITY INSURANCE CO. LTD.</h4>
+                      </div>
+                      <p className="text-[7px] font-bold text-slate-500 uppercase tracking-widest leading-none mt-1">COMMERCIAL MOTOR VEHICLE COMPREHENSIVE INSURANCE POLICY</p>
+                      <span className="absolute right-0 top-0 text-[7px] font-mono font-bold bg-green-100 border border-green-200 text-green-700 px-1 rounded">
+                        ACTIVE
+                      </span>
+                    </div>
+
+                    {/* Table grid */}
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2.5 my-auto text-[8px] border-b pb-3 border-slate-100">
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">POLICY NUMBER</span>
+                        <span className="font-bold text-slate-800 font-mono block">RS-5590-M-489021-2026</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">INSURED PARTY NAME</span>
+                        <span className="font-bold text-slate-800 block truncate">
+                          {selectedLoad?.assignedTransporter?.companyName || 'Biofactor Transporter'}
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">VEHICLE REGISTRATION NO.</span>
+                        <span className="font-bold text-slate-800 font-mono block">MH-12-KL-3402</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">COVERAGE PERIOD VALIDITY</span>
+                        <span className="font-bold text-slate-800 block">
+                          Until Dec 31, 2026 (23:59:59)
+                        </span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">INSURED DECLARED VALUE (IDV)</span>
+                        <span className="font-bold text-green-700 font-mono block">₹28,50,000.00</span>
+                      </div>
+                      <div className="space-y-0.5">
+                        <span className="text-slate-400 uppercase font-bold block">PREMIUM CONTRIBUTION</span>
+                        <span className="font-bold text-slate-800 font-mono block">₹48,250.00 (PAID)</span>
+                      </div>
+                    </div>
+
+                    {/* Stamp & Footer */}
+                    <div className="flex justify-between items-end pt-2">
+                      <div className="space-y-0.5">
+                        <p className="text-[7px] text-slate-400 leading-none">Underwriter stamp & code</p>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {/* Round stamp */}
+                          <div className="w-10 h-10 rounded-full border border-dashed border-red-500/80 flex items-center justify-center text-[5px] text-red-500 font-bold text-center rotate-12 leading-tight">
+                            ROYAL INS.<br/>APPROVED
+                          </div>
+                          <div className="w-10 h-10 rounded-full border border-double border-indigo-600/80 flex items-center justify-center text-[5px] text-indigo-600 font-bold text-center -rotate-6 leading-tight">
+                            BIOFACTOR<br/>VERIFIED
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-right">
+                        <p className="text-[6px] italic font-serif text-slate-500">Chief Underwriting Officer</p>
+                        <div className="w-20 h-5 border-b border-slate-300 font-serif text-[10px] text-slate-400 mt-0.5">
+                          S. Chatterjee
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom Footer Actions */}
+              <div className="p-4 bg-slate-900 border-t border-slate-800 flex justify-end gap-2">
+                <Button 
+                  onClick={() => setPreviewDoc(null)} 
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 text-xs px-5 shadow-lg active:scale-95"
+                >
+                  Approve Document Credentials
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

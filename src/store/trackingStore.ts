@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-export type TripStatus = 'Moving' | 'Stopped' | 'Idle' | 'Offline' | 'Delayed';
+export type TripStatus = 'Moving' | 'Stopped' | 'Idle' | 'Offline' | 'Delayed' | 'PENDING';
 
 export interface LatLng {
   lat: number;
@@ -73,9 +73,11 @@ interface TrackingState {
   dismissAlert: (alertId: string) => void;
   reassignVehicle: (tripId: string, newVehicleNo: string) => void;
   simulateGpsMovement: () => void;
+  createTripFromLoad: (load: any, bid: any) => void;
+  dispatchTripDetails: (tripId: string, dispatchPayload: any) => Promise<void>;
 }
 
-export const useTrackingStore = create<TrackingState>((set) => ({
+export const useTrackingStore = create<TrackingState>((set, get) => ({
   selectedTripId: null,
   mapViewMode: 'dark',
   isReplayingRoute: false,
@@ -157,7 +159,99 @@ export const useTrackingStore = create<TrackingState>((set) => ({
     });
 
     return { trips: updatedTrips };
-  })
+  }),
+  createTripFromLoad: (load: any, bid: any) => {
+    const suffix = load.id.split('-')[1] || '1001';
+    const generatedTripId = `TRIP-2026-${suffix}`;
+    
+    // Check if trip already exists
+    const existing = get().trips.find(t => t.id === generatedTripId);
+    if (existing) return;
+
+    const newTrip: VehicleTrip = {
+      id: generatedTripId,
+      vehicleNumber: bid.vehicleNumber || 'MH-12-KL-3402',
+      driverName: bid.transporterName || 'Transporter',
+      driverPhone: '+91 98765 43210',
+      transporter: bid.transporterName || 'Transporter',
+      status: 'PENDING',
+      speed: 0,
+      eta: 'Awaiting Dispatch',
+      origin: { name: load.from || 'Origin', lat: 17.3850, lng: 78.4867 },
+      destination: { name: load.to || 'Destination', lat: 16.5062, lng: 80.6480 },
+      currentCoords: { lat: 17.3850, lng: 78.4867 },
+      routeCoords: [],
+      currentIndex: 0,
+      stops: [],
+      fuel: 100,
+      lastUpdated: 'Just now',
+      timeline: [
+        { time: 'Just Now', event: `Trip created from Load Bid Approval. Pending location dispatch coordinates.`, status: 'info' }
+      ],
+      deviationAlert: false,
+      unauthorizedStop: false,
+      idleTime: '0 mins',
+      geofences: []
+    };
+
+    set((state) => ({
+      trips: [...state.trips, newTrip]
+    }));
+  },
+  dispatchTripDetails: async (tripId: string, dispatchPayload: any) => {
+    const parseGps = (gpsStr: string): LatLng => {
+      const parts = gpsStr.split(',').map(p => parseFloat(p.trim()));
+      return { lat: parts[0] || 0, lng: parts[1] || 0 };
+    };
+
+    const loadingCoords = parseGps(dispatchPayload.loading_gps_coordinates || dispatchPayload.loadingGpsCoordinates || '17.385044, 78.486671');
+    const unloadingCoords = parseGps(dispatchPayload.unloading_gps_coordinates || dispatchPayload.unloadingGpsCoordinates || '16.506174, 80.648015');
+
+    const steps = 30;
+    const routeCoords: LatLng[] = [];
+    for (let i = 0; i <= steps; i++) {
+      const ratio = i / steps;
+      routeCoords.push({
+        lat: loadingCoords.lat + (unloadingCoords.lat - loadingCoords.lat) * ratio,
+        lng: loadingCoords.lng + (unloadingCoords.lng - loadingCoords.lng) * ratio
+      });
+    }
+
+    set((state) => ({
+      trips: state.trips.map((t) => {
+        if (t.id === tripId) {
+          return {
+            ...t,
+            origin: { 
+              name: dispatchPayload.loading_address || dispatchPayload.loadingAddress || t.origin.name, 
+              lat: loadingCoords.lat, 
+              lng: loadingCoords.lng 
+            },
+            destination: { 
+              name: dispatchPayload.unloading_address || dispatchPayload.unloadingAddress || t.destination.name, 
+              lat: unloadingCoords.lat, 
+              lng: unloadingCoords.lng 
+            },
+            currentCoords: loadingCoords,
+            routeCoords,
+            status: 'Moving',
+            speed: 65,
+            eta: '4h 15m',
+            lastUpdated: 'Just now',
+            timeline: [
+              { time: 'Just Now', event: `Transit coordinates dispatched. GPS live stream tracking initiated.`, status: 'success' },
+              ...t.timeline
+            ],
+            geofences: [
+              { name: 'Loading Site Geofence', radius: 500, lat: loadingCoords.lat, lng: loadingCoords.lng, inside: true },
+              { name: 'Unloading Hub Geofence', radius: 500, lat: unloadingCoords.lat, lng: unloadingCoords.lng, inside: false }
+            ]
+          };
+        }
+        return t;
+      })
+    }));
+  }
 }));
 
 // Safe references to toast hook

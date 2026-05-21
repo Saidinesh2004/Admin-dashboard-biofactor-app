@@ -35,6 +35,7 @@ interface OnboardingState {
   addOnboardingBatch: (fileName: string, fileSize: string, extracted: OCRExtractedData[]) => void;
   updateQueueRecord: (tempId: string, updates: Partial<OCRExtractedData>) => void;
   deleteQueueRecord: (tempId: string) => void;
+  deleteUploadHistory: (historyId: string) => void;
   approveQueueRecord: (tempId: string) => void;
   rejectQueueRecord: (tempId: string, reason: string) => void;
   submitAllVerified: () => number;
@@ -114,6 +115,16 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
     });
   },
 
+  deleteUploadHistory: (historyId) => {
+    const historyItem = get().uploadHistory.find(item => item.id === historyId);
+    if (!historyItem) return;
+
+    set({
+      uploadHistory: get().uploadHistory.filter(item => item.id !== historyId),
+      onboardingQueue: get().onboardingQueue.filter(item => item.sourceFile !== historyItem.fileName)
+    });
+  },
+
   approveQueueRecord: (tempId) => {
     const record = get().onboardingQueue.find(item => item.id === tempId);
     if (!record) return;
@@ -127,6 +138,8 @@ export const useOnboardingStore = create<OnboardingState>((set, get) => ({
       mobile: record.data.mobile,
       whatsapp: record.data.whatsapp,
       email: record.data.email,
+      password: record.data.password || 'password123',
+      role: record.data.role || 'Driver',
       address: record.data.address,
       city: record.data.city,
       district: record.data.city, // Default district to city

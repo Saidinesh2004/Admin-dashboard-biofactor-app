@@ -2,12 +2,75 @@ import { create } from 'zustand';
 import { loadService, type Load, type Bid, type Transporter } from '@/services/loadService';
 import { useTransporterStore } from './transporterStore';
 import { apiClient } from '@/services/apiClient';
+import { useTrackingStore } from './trackingStore';
 
 export type { Load, Bid, Transporter };
 
 // Top 7 Cheapest Mock Bids Generator
 const generateMockBids = (load: Load): Bid[] => {
-  return [];
+  const transporters = [
+    { name: 'FastFreight Solutions', owner: 'Ramesh Sharma', fleetSize: 45, trips: 1250, exp: 12, rating: 4.8 },
+    { name: 'SafeWay Express', owner: 'Vikram Singh', fleetSize: 32, trips: 840, exp: 8, rating: 4.6 },
+    { name: 'BlueDart Road Carrier', owner: 'Anil Mehta', fleetSize: 110, trips: 4200, exp: 15, rating: 4.9 },
+    { name: 'Agarwal Premium Movers', owner: 'Suresh Agarwal', fleetSize: 60, trips: 2300, exp: 10, rating: 4.7 },
+    { name: 'VRL Logistics Ltd', owner: 'Vijay Sankeshwar', fleetSize: 250, trips: 9800, exp: 20, rating: 4.9 },
+    { name: 'Gati Freight Services', owner: 'Rajesh Gupta', fleetSize: 85, trips: 3100, exp: 14, rating: 4.5 },
+    { name: 'TCI Transport Corporation', owner: 'Mahendra Agarwal', fleetSize: 150, trips: 6700, exp: 18, rating: 4.8 },
+    { name: 'Delhi Roadlines', owner: 'Sanjay Dutt', fleetSize: 18, trips: 450, exp: 5, rating: 4.2 },
+    { name: 'Speedex Logistics', owner: 'Mohit Chawla', fleetSize: 22, trips: 620, exp: 6, rating: 4.4 }
+  ];
+
+  // Pick 7 unique transporters randomly and generate competitive rates
+  const shuffled = [...transporters].sort(() => 0.5 - Math.random()).slice(0, 7);
+  const vehicleTypes = ['22-Tonne Open High Side', '19-Tonne Closed Box Container', '32-Tonne Open Trailer', '15-Tonne Triaxle', '22-Tonne Multi-axle'];
+
+  const bids: Bid[] = shuffled.map((t, idx) => {
+    const percentageVariation = -0.15 + Math.random() * 0.25; 
+    const pricePerTonne = Math.round(load.ratePerTonne * (1 + percentageVariation));
+    const bidAmount = Math.round(pricePerTonne * load.tonnes);
+    const vehicleType = vehicleTypes[Math.floor(Math.random() * vehicleTypes.length)];
+    const etaHours = Math.floor(6 + Math.random() * 36);
+    
+    const verificationOptions: ('KYC Verified' | 'Insurance Valid' | 'Trusted Transporter' | 'New Bidder')[][] = [
+      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
+      ['KYC Verified', 'Insurance Valid'],
+      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
+      ['KYC Verified', 'Insurance Valid', 'New Bidder'],
+      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
+      ['KYC Verified', 'Insurance Valid'],
+      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter']
+    ];
+
+    return {
+      id: `BID-2026-${1000 + Math.floor(Math.random() * 9000)}`,
+      rank: 0,
+      transporterName: t.name,
+      vehicleType,
+      bidAmount,
+      pricePerTonne,
+      eta: `${etaHours} hrs`,
+      driverRating: t.rating,
+      experienceYears: t.exp,
+      verificationStatus: verificationOptions[idx % verificationOptions.length],
+      status: 'Pending',
+      transporterDetails: {
+        companyName: t.name,
+        ownerName: t.owner,
+        fleetSize: t.fleetSize,
+        completedTrips: t.trips,
+        insuranceValidity: '31 Dec 2026',
+        kycStatus: 'Verified',
+        rating: t.rating,
+        experienceYears: t.exp
+      }
+    };
+  });
+
+  const sortedBids = bids.sort((a, b) => a.bidAmount - b.bidAmount);
+  return sortedBids.map((b, index) => ({
+    ...b,
+    rank: index + 1
+  }));
 };
 
 interface LoadState {
@@ -78,8 +141,18 @@ export const useLoadStore = create<LoadState>((set, get) => ({
       try {
         const backendLoads = await apiClient.getLoads();
         
-        // Ensure every load has generated bids if it's missing them
+        // Ensure every load has generated bids if it's missing them, preserving already fetched/simulated bids
+        const currentLoads = get().loads;
         const standardLoads = backendLoads.map(load => {
+          // If we already have this load in our store with bids, preserve those bids!
+          const existingLoad = currentLoads.find(l => l.id === load.id || l.bidId === load.bidId);
+          if (existingLoad && existingLoad.bids && existingLoad.bids.length > 0) {
+            return {
+              ...load,
+              bids: existingLoad.bids
+            };
+          }
+
           if (!load.bids || load.bids.length === 0) {
             return {
               ...load,
@@ -107,7 +180,12 @@ export const useLoadStore = create<LoadState>((set, get) => ({
     try {
       // Look up target bidId from our local record mapping
       const targetLoad = get().loads.find(l => l.id === loadId || l.bidId === loadId);
-      const searchId = targetLoad?.bidId || loadId;
+      let searchId = targetLoad?.bidId || loadId;
+
+      // Normalize searchId - strip "LD-" prefix if present to match backend's expected bid_id
+      if (searchId.startsWith('LD-')) {
+        searchId = searchId.substring(3);
+      }
 
       const realBids = await apiClient.getBidsForLoad(searchId);
       
@@ -160,16 +238,22 @@ export const useLoadStore = create<LoadState>((set, get) => ({
   },
 
   approveBid: async (loadId, bidId) => {
+    let approvedBidObj: any = null;
+    let targetLoadObj: any = null;
+
     const updatedLoads = get().loads.map((l) => {
       if (l.id === loadId) {
         const approvedBid = l.bids?.find(b => b.id === bidId);
         if (!approvedBid) return l;
 
+        approvedBidObj = approvedBid;
+        targetLoadObj = l;
+
         const updatedBids = l.bids?.map(b => {
           if (b.id === bidId) {
-            return { ...b, status: 'Approved' as const };
+            return { ...b, status: 'ACCEPTED' as const };
           }
-          return { ...b, status: 'Locked' as const };
+          return { ...b, status: 'REJECTED' as const };
         }) || [];
 
         const suffix = l.id.split('-')[1] || '1001';
@@ -184,7 +268,7 @@ export const useLoadStore = create<LoadState>((set, get) => ({
 
         return {
           ...l,
-          status: 'Assigned & Dispatched' as const,
+          status: 'CLOSED' as const,
           bids: updatedBids,
           assignedTransporter: approvedBid.transporterDetails,
           tripId: generatedTripId
@@ -195,6 +279,11 @@ export const useLoadStore = create<LoadState>((set, get) => ({
 
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
+
+    // Instantiate a trip in trackingStore if successfully approved
+    if (approvedBidObj && targetLoadObj) {
+      useTrackingStore.getState().createTripFromLoad(targetLoadObj, approvedBidObj);
+    }
 
     try {
       await apiClient.approveBid(bidId);

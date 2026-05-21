@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTrackingStore, type VehicleTrip, type LiveAlert, injectToastHook, type TripStatus } from '@/store/trackingStore';
 import { calculateDistance } from '@/services/gpsService';
+import { apiClient } from '@/services/apiClient';
 
 declare global {
   interface Window {
@@ -54,6 +55,13 @@ export default function LiveFleetTrackingPage() {
   const [leafletLoaded, setLeafletLoaded] = useState(false);
   const [reassignInput, setReassignInput] = useState('');
   const [isReassigning, setIsReassigning] = useState(false);
+
+  // Dispatch Coordinates states
+  const [loadingAddress, setLoadingAddress] = useState("Plant Gate #3, Biofactor Industrial Zone, Hyderabad, TS");
+  const [unloadingAddress, setUnloadingAddress] = useState("Warehouse B-12, Agriculture Center, Vijayawada, AP");
+  const [loadingGps, setLoadingGps] = useState("17.385044, 78.486671");
+  const [unloadingGps, setUnloadingGps] = useState("16.506174, 80.648015");
+  const [isDispatching, setIsDispatching] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
@@ -296,6 +304,43 @@ export default function LiveFleetTrackingPage() {
     return trips.find(t => t.id === selectedTripId) || null;
   }, [trips, selectedTripId]);
 
+  const handleDispatchSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedTripId) return;
+
+    setIsDispatching(true);
+    try {
+      const payload = {
+        loadingAddress,
+        unloadingAddress,
+        loadingGpsCoordinates: loadingGps,
+        unloadingGpsCoordinates: unloadingGps,
+      };
+
+      try {
+        await apiClient.dispatchTripDetails(selectedTripId, payload);
+      } catch (backendError) {
+        console.warn("Backend dispatch failed, falling back to local simulation.", backendError);
+      }
+
+      await useTrackingStore.getState().dispatchTripDetails(selectedTripId, payload);
+
+      toast({
+        title: "Trip Dispatched Successfully",
+        description: `Active routing path stream plotted. Vehicle status changed to Moving.`,
+        className: "bg-emerald-600 text-white font-bold border-none shadow-xl"
+      });
+    } catch (error: any) {
+      toast({
+        title: "Dispatch Failed",
+        description: error.message || "Failed to dispatch trip details.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsDispatching(false);
+    }
+  };
+
   const handleReassignSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedTripId || !reassignInput.trim()) return;
@@ -317,6 +362,7 @@ export default function LiveFleetTrackingPage() {
       case 'Delayed': return <Badge className="bg-rose-50 text-rose-700 border border-rose-200">Delayed</Badge>;
       case 'Idle': return <Badge className="bg-amber-50 text-amber-700 border border-amber-200">Idle</Badge>;
       case 'Offline': return <Badge className="bg-slate-100 text-slate-400 border border-slate-200">Offline</Badge>;
+      case 'PENDING': return <Badge className="bg-amber-50 text-amber-700 border border-amber-300 animate-pulse">Pending Dispatch</Badge>;
       default: return <Badge variant="outline">{status}</Badge>;
     }
   };
@@ -783,7 +829,65 @@ export default function LiveFleetTrackingPage() {
                 <div className="space-y-3 pt-4 border-t">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Administrative Tower Controls</h4>
                   
-                  {isReassigning ? (
+                  {selectedTrip.status === 'PENDING' ? (
+                    <form onSubmit={handleDispatchSubmit} className="space-y-3 border rounded-xl p-4 bg-slate-50/50">
+                      <p className="text-[10px] font-bold text-slate-500 uppercase">Assign Location & Dispatch Details</p>
+                      
+                      <div className="space-y-2">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase block">Loading Address</label>
+                          <Input 
+                            value={loadingAddress}
+                            onChange={e => setLoadingAddress(e.target.value)}
+                            placeholder="Loading Address"
+                            className="bg-white h-8 text-xs"
+                            required
+                          />
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase block">Loading GPS Coordinates</label>
+                          <Input 
+                            value={loadingGps}
+                            onChange={e => setLoadingGps(e.target.value)}
+                            placeholder="lat, lng (e.g. 17.385044, 78.486671)"
+                            className="bg-white h-8 text-xs font-mono"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase block">Unloading Address</label>
+                          <Input 
+                            value={unloadingAddress}
+                            onChange={e => setUnloadingAddress(e.target.value)}
+                            placeholder="Unloading Address"
+                            className="bg-white h-8 text-xs"
+                            required
+                          />
+                        </div>
+
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase block">Unloading GPS Coordinates</label>
+                          <Input 
+                            value={unloadingGps}
+                            onChange={e => setUnloadingGps(e.target.value)}
+                            placeholder="lat, lng (e.g. 16.506174, 80.648015)"
+                            className="bg-white h-8 text-xs font-mono"
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <Button 
+                        type="submit" 
+                        disabled={isDispatching}
+                        className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 uppercase text-[10px] tracking-wider shadow-xs mt-2"
+                      >
+                        {isDispatching ? "Dispatching..." : "Dispatch Trip & Coordinates"}
+                      </Button>
+                    </form>
+                  ) : isReassigning ? (
                     <form onSubmit={handleReassignSubmit} className="space-y-3 border rounded-xl p-3 bg-slate-50/50">
                       <p className="text-[10px] font-bold text-slate-500 uppercase">Input Reassigned Vehicle Registration Number</p>
                       <div className="flex gap-2">

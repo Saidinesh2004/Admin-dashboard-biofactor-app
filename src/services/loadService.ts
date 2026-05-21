@@ -40,7 +40,7 @@ export interface Load {
   dispatchDate: string;
   endDate?: string;
   endTime?: string;
-  status: 'Open' | 'Assigned & Dispatched' | 'Negotiation In Progress' | 'Awaiting New Bids' | 'Completed';
+  status: 'Open' | 'Assigned & Dispatched' | 'Negotiation In Progress' | 'Awaiting New Bids' | 'Completed' | 'CLOSED';
   createdAt: number;
   bids?: Bid[];
   assignedTransporter?: Transporter;

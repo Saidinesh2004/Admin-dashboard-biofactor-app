@@ -229,6 +229,33 @@ export const apiClient = {
   },
 
   /**
+   * Dispatches trip coordinates and addresses (POST /api/trips/{trip_id}/dispatch)
+   */
+  dispatchTripDetails: async (tripId: string, payload: {
+    loadingAddress: string;
+    unloadingAddress: string;
+    loadingGpsCoordinates: string;
+    unloadingGpsCoordinates: string;
+  }): Promise<any> => {
+    const snakePayload = {
+      loading_address: payload.loadingAddress,
+      unloading_address: payload.unloadingAddress,
+      loading_gps_coordinates: payload.loadingGpsCoordinates,
+      unloading_gps_coordinates: payload.unloadingGpsCoordinates,
+    };
+
+    const response = await fetch(`${API_BASE_URL}/api/trips/${tripId}/dispatch`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(snakePayload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to dispatch trip details: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
    * Submits a user's verification KYC documents to the backend database (POST /api/auth/{user_id}/upload-docs)
    */
   uploadKycDocuments: async (userId: string, formData: FormData): Promise<any> => {
