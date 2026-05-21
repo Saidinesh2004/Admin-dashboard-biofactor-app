@@ -130,8 +130,12 @@ export default function DashboardHome() {
     };
 
     loads.forEach((load) => {
-      if (!load.dispatchDate) return;
-      const date = new Date(load.dispatchDate);
+      // Group by creation date (createdAt) to show the day the load was posted
+      // fallback to dispatchDate if createdAt is missing or invalid
+      let date = new Date(load.createdAt || load.dispatchDate);
+      if (isNaN(date.getTime()) && load.dispatchDate) {
+        date = new Date(load.dispatchDate);
+      }
       if (isNaN(date.getTime())) return;
       const dayName = days[date.getDay()];
       if (dayMap[dayName]) {
