@@ -42,28 +42,7 @@ interface OnboardingState {
 
 export const useOnboardingStore = create<OnboardingState>((set, get) => ({
   onboardingQueue: [],
-  uploadHistory: [
-    {
-      id: 'BIMP-9021',
-      fileName: 'north_zone_carriers.xlsx',
-      fileSize: '242 KB',
-      uploadDate: '2026-05-18 14:22',
-      totalRecords: 4,
-      verified: 2,
-      rejected: 1,
-      pendingReview: 1
-    },
-    {
-      id: 'BIMP-9022',
-      fileName: 'delhi_fleet_onboard.pdf',
-      fileSize: '1.2 MB',
-      uploadDate: '2026-05-17 10:15',
-      totalRecords: 1,
-      verified: 1,
-      rejected: 0,
-      pendingReview: 0
-    }
-  ],
+  uploadHistory: [],
   isProcessing: false,
   activeFilter: 'ALL',
 

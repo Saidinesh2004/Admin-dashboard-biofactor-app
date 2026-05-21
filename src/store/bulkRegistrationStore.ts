@@ -51,28 +51,7 @@ interface BulkRegistrationState {
 }
 
 export const useBulkRegistrationStore = create<BulkRegistrationState>((set, get) => ({
-  uploadHistory: [
-    {
-      id: 'BIMP-9021',
-      fileName: 'north_zone_carriers.xlsx',
-      fileSize: '242 KB',
-      fileType: 'xlsx',
-      uploadDate: '2026-05-18',
-      totalRecords: 12,
-      successful: 10,
-      failed: 2
-    },
-    {
-      id: 'BIMP-9022',
-      fileName: 'delhi_fleet_onboard.pdf',
-      fileSize: '1.2 MB',
-      fileType: 'pdf',
-      uploadDate: '2026-05-17',
-      totalRecords: 5,
-      successful: 5,
-      failed: 0
-    }
-  ],
+  uploadHistory: [],
   extractedRecords: [],
   isUploading: false,
   uploadProgress: 0,

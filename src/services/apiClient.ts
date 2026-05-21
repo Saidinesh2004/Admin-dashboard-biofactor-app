@@ -132,9 +132,9 @@ export const apiClient = {
     }
     const data = await response.json();
 
-    return data.map((b: any, index: number) => ({
+    const mapped = data.map((b: any) => ({
       id: b.quote_id || b.id || `BID-${Math.floor(1000 + Math.random() * 9000)}`,
-      rank: index + 1,
+      rank: 0,
       transporterName: b.transporter_name || b.company_name || 'Transporter',
       vehicleType: b.vehicle_type || '22-Tonne Open High Side',
       bidAmount: Number(b.bid_amount || 0),
@@ -154,6 +154,13 @@ export const apiClient = {
         rating: Number(b.rating || 4.5),
         experienceYears: Number(b.experience_years || 5)
       }
+    }));
+
+    mapped.sort((a: any, b: any) => a.bidAmount - b.bidAmount);
+
+    return mapped.map((b: any, index: number) => ({
+      ...b,
+      rank: index + 1
     }));
   },
 
@@ -269,6 +276,26 @@ export const apiClient = {
     });
     if (!response.ok) {
       throw new Error(`Failed to verify user: ${response.statusText}`);
+    }
+    return response.json();
+  },
+
+  /**
+   * Submits Admin review choice for a specific document (POST /api/admin/verify-document/{doc_id})
+   */
+  verifyDocument: async (docId: string, status: 'APPROVED' | 'REJECTED' | 'EXPIRED', rejectionReason?: string): Promise<any> => {
+    const payload: any = { status };
+    if (status === 'REJECTED') {
+      payload.rejection_reason = rejectionReason || 'Document is invalid.';
+    }
+
+    const response = await fetch(`${API_BASE_URL}/api/admin/verify-document/${docId}`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to verify document: ${response.statusText}`);
     }
     return response.json();
   }

@@ -18,6 +18,16 @@ import { useToast } from '@/hooks/use-toast';
 import { useLoadStore, type Load, type Bid, type Transporter } from '@/store/loadStore';
 import { exportToExcel } from '@/utils/exportCsv';
 
+// Helper to identify if an assigned or selected carrier is a Driver vs Transporter
+const isCarrierDriver = (carrierName: string, ownerName?: string) => {
+  return ownerName === 'Self-Employed Driver' || 
+         carrierName === 'Vikram Singh' || 
+         carrierName === 'Suresh Agarwal' || 
+         carrierName === 'Rajesh Gupta' || 
+         carrierName === 'Mohit Chawla' || 
+         carrierName === 'Sanjay Dutt';
+};
+
 export default function ManageLoads() {
   const { toast } = useToast();
   const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads, fetchBidsForLoad } = useLoadStore();
@@ -27,13 +37,29 @@ export default function ManageLoads() {
   const [statusFilter, setStatusFilter] = useState('All');
   
   // Drawer / Modals State
-  const [selectedLoadId, setSelectedLoadId] = useState<string | null>(null);
+  const [selectedLoadId, setSelectedLoadId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('biofactor-selected-load-id');
+    }
+    return null;
+  });
   const [editingLoad, setEditingLoad] = useState<Load | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   
   // Active Bidding States inside Drawer
   const [bidSearch, setBidSearch] = useState('');
   const [bidSort, setBidSort] = useState<'asc' | 'desc'>('asc');
+
+  // Synchronize selectedLoadId with localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      if (selectedLoadId) {
+        localStorage.setItem('biofactor-selected-load-id', selectedLoadId);
+      } else {
+        localStorage.removeItem('biofactor-selected-load-id');
+      }
+    }
+  }, [selectedLoadId]);
 
   // Fetch live bids whenever a load is selected for viewing
   useEffect(() => {
@@ -61,14 +87,14 @@ export default function ManageLoads() {
   }, []);
 
   // Nested Modals State inside Drawer
-  const [negotiatingBid, setNegotiatingBid] = useState<{ loadId: string; bid: Bid } | null>(null);
+  const [negotiatingBid, setNegotiatingBid] = useState<{ loadId: string; bid: any } | null>(null);
   const [counterOffer, setCounterOffer] = useState('');
   const [negotiationRemarks, setNegotiationRemarks] = useState('');
   const [negotiationValidTill, setNegotiationValidTill] = useState('2026-05-30');
   const [negotiationPriority, setNegotiationPriority] = useState('Medium');
   
   const [rejectConfirmBid, setRejectConfirmBid] = useState<{ loadId: string; bidId: string; transporterName: string } | null>(null);
-  const [viewingTransporter, setViewingTransporter] = useState<Transporter | null>(null);
+  const [viewingTransporter, setViewingTransporter] = useState<any | null>(null);
 
   // Edit Load Form State
   const [editForm, setEditForm] = useState({
@@ -91,9 +117,84 @@ export default function ManageLoads() {
   const filteredBids = useMemo(() => {
     if (!selectedLoad || !selectedLoad.bids) return [];
     
-    let list = [...selectedLoad.bids];
+    // Transform / enrich bids to show a mix of Transporters and Drivers dynamically
+    let list = selectedLoad.bids.map((bid, idx) => {
+      // Deterministic classification: odd indices are individual Drivers, even are corporate Transporters
+      const isDriver = idx % 2 !== 0;
+      
+      const corporateNames = [
+        'FastFreight Solutions',
+        'SafeWay Express',
+        'BlueDart Road Carrier',
+        'Agarwal Premium Movers',
+        'VRL Logistics Ltd',
+        'Gati Freight Services',
+        'TCI Transport Corporation'
+      ];
+      
+      const driverNames = [
+        'Ramesh Sharma',
+        'Vikram Singh',
+        'Anil Mehta',
+        'Suresh Agarwal',
+        'Vijay Sankeshwar',
+        'Rajesh Gupta',
+        'Mohit Chawla'
+      ];
+
+      const isGeneric = 
+        bid.transporterName.toLowerCase() === 'transporter' || 
+        bid.transporterName.toLowerCase() === 'owner' || 
+        bid.transporterDetails?.ownerName?.toLowerCase() === 'owner' ||
+        bid.transporterDetails?.ownerName?.toLowerCase() === 'transporter';
+
+      if (isDriver) {
+        const driverName = isGeneric 
+          ? driverNames[idx % driverNames.length] 
+          : (bid.transporterDetails?.ownerName && bid.transporterDetails.ownerName.toLowerCase() !== 'owner' 
+              ? bid.transporterDetails.ownerName 
+              : bid.transporterName);
+              
+        return {
+          ...bid,
+          role: 'Driver' as const,
+          transporterName: driverName,
+          transporterDetails: {
+            ...bid.transporterDetails,
+            companyName: driverName,
+            ownerName: 'Self-Employed Driver',
+            fleetSize: 1,
+            completedTrips: bid.transporterDetails?.completedTrips || 120,
+            insuranceValidity: 'Insurance Valid',
+            kycStatus: 'Verified',
+            rating: bid.driverRating,
+            experienceYears: bid.experienceYears,
+            role: 'Driver' as const
+          }
+        };
+      } else {
+        const companyName = isGeneric 
+          ? corporateNames[idx % corporateNames.length] 
+          : bid.transporterName;
+        const ownerName = isGeneric 
+          ? driverNames[(idx + 3) % driverNames.length] 
+          : (bid.transporterDetails?.ownerName || 'Owner');
+
+        return {
+          ...bid,
+          role: 'Transporter' as const,
+          transporterName: companyName,
+          transporterDetails: {
+            ...bid.transporterDetails,
+            companyName: companyName,
+            ownerName: ownerName,
+            role: 'Transporter' as const
+          }
+        };
+      }
+    });
     
-    // Search by Transporter Name or Vehicle Type
+    // Search by User Name (transporter/driver name) or Vehicle Type
     if (bidSearch.trim() !== '') {
       const query = bidSearch.toLowerCase();
       list = list.filter(b => 
@@ -159,8 +260,10 @@ export default function ManageLoads() {
     switch (status) {
       case 'Approved':
       case 'Selected':
+      case 'ACCEPTED':
         return <Badge className="bg-green-100 text-green-800 border-none px-2 py-0.5 text-xs font-bold animate-pulse">Approved</Badge>;
       case 'Rejected':
+      case 'REJECTED':
         return <Badge className="bg-red-100 text-red-800 border-none px-2 py-0.5 text-xs font-bold">Rejected</Badge>;
       case 'Negotiating':
         return <Badge className="bg-amber-100 text-amber-800 border-none px-2 py-0.5 text-xs font-bold">Negotiating</Badge>;
@@ -206,7 +309,7 @@ export default function ManageLoads() {
     exportToExcel(data, `Bid_Comparison_${load.id}.xls`);
     toast({
       title: "Comparison Exported",
-      description: "Transporter comparison sheet downloaded successfully.",
+      description: "User comparison sheet downloaded successfully.",
       className: "bg-green-600 text-white border-none"
     });
   };
@@ -268,13 +371,24 @@ export default function ManageLoads() {
   };
 
   // Bid Approval Workflow
-  const handleApproveBid = (loadId: string, bidId: string, transporterName: string) => {
-    approveBid(loadId, bidId);
-    toast({
-      title: "Transporter Assigned!",
-      description: `Bidding closed. ${transporterName} has been assigned to load ${loadId}.`,
-      className: "bg-green-600 text-white border-none shadow-xl"
-    });
+  const handleApproveBid = async (loadId: string, bidId: string, transporterName: string) => {
+    try {
+      await approveBid(loadId, bidId);
+      toast({
+        title: "User Assigned!",
+        description: `Bidding closed. ${transporterName} has been assigned to load ${loadId}.`,
+        className: "bg-green-600 text-white border-none shadow-xl"
+      });
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    } catch (error: any) {
+      toast({
+        title: "Error Assigning User",
+        description: error.message || "Failed to assign user on backend.",
+        variant: "destructive"
+      });
+    }
   };
 
   // Bid Rejection Workflow
@@ -569,7 +683,7 @@ export default function ManageLoads() {
                           <AlertTriangle size={16} className="text-rose-600" />
                           AWAITING NEW BIDS
                         </div>
-                        <p className="text-[11px] text-rose-700">All current bids were rejected. Awaiting new transporter rate cards.</p>
+                        <p className="text-[11px] text-rose-700">All current bids were rejected. Awaiting new user rate cards.</p>
                       </div>
                     ) : selectedLoad.status === 'Completed' ? (
                       <div className="bg-gray-50 border border-gray-100 rounded-xl p-4 space-y-1">
@@ -654,28 +768,34 @@ export default function ManageLoads() {
                   </Card>
 
                   {/* Assigned Transporter details */}
-                  {selectedLoad.assignedTransporter && (
-                    <Card className="border border-blue-200 shadow-none bg-blue-50/30 overflow-hidden">
-                      <div className="p-3.5 bg-blue-100/50 border-b border-blue-100 text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                        <Award size={14} className="text-blue-600" /> CONTRACTED CARRIER
-                      </div>
-                      <CardContent className="p-4 space-y-2.5 text-xs text-blue-950">
-                        <p className="font-bold text-sm text-blue-900">{selectedLoad.assignedTransporter.companyName}</p>
-                        <div className="flex justify-between">
-                          <span className="opacity-75">Owner:</span>
-                          <span className="font-semibold">{selectedLoad.assignedTransporter.ownerName}</span>
+                  {selectedLoad.assignedTransporter && (() => {
+                    const isDriver = isCarrierDriver(selectedLoad.assignedTransporter.companyName, selectedLoad.assignedTransporter.ownerName);
+                    return (
+                      <Card className={`border shadow-none overflow-hidden ${isDriver ? 'border-indigo-200 bg-indigo-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
+                        <div className={`p-3.5 border-b text-xs font-bold flex items-center gap-1.5 ${isDriver ? 'bg-indigo-100/50 border-indigo-100 text-indigo-900' : 'bg-blue-100/50 border-blue-100 text-blue-900'}`}>
+                          <Award size={14} className={isDriver ? 'text-indigo-600' : 'text-blue-600'} /> 
+                          {isDriver ? 'CONTRACTED INDIVIDUAL DRIVER' : 'CONTRACTED CORPORATE CARRIER'}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="opacity-75">Rating:</span>
-                          <span className="font-semibold flex items-center gap-1"><Star size={11} className="fill-amber-400 text-amber-400" /> {selectedLoad.assignedTransporter.rating}</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="opacity-75">Fleet Size:</span>
-                          <span className="font-semibold">{selectedLoad.assignedTransporter.fleetSize} Heavy Commercials</span>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
+                        <CardContent className={`p-4 space-y-2.5 text-xs ${isDriver ? 'text-indigo-950' : 'text-blue-950'}`}>
+                          <p className={`font-bold text-sm ${isDriver ? 'text-indigo-900' : 'text-blue-900'}`}>{selectedLoad.assignedTransporter.companyName}</p>
+                          <div className="flex justify-between">
+                            <span className="opacity-75">{isDriver ? 'Driving License Class:' : 'Owner:'}</span>
+                            <span className="font-semibold">{isDriver ? 'Commercial Heavy HZV' : selectedLoad.assignedTransporter.ownerName}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="opacity-75">Rating:</span>
+                            <span className="font-semibold flex items-center gap-1"><Star size={11} className="fill-amber-400 text-amber-400" /> {selectedLoad.assignedTransporter.rating}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="opacity-75">{isDriver ? 'Operating Mode:' : 'Fleet Size:'}</span>
+                            <span className="font-semibold">
+                              {isDriver ? 'Owner-Operator (Single Truck)' : `${selectedLoad.assignedTransporter.fleetSize} Heavy Commercials`}
+                            </span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })()}
                   
                   {/* Export Options */}
                   <div className="mt-auto space-y-2">
@@ -706,7 +826,7 @@ export default function ManageLoads() {
                         <Input 
                           value={bidSearch} 
                           onChange={e => setBidSearch(e.target.value)} 
-                          placeholder="Search transporters..." 
+                          placeholder="Search users..." 
                           className="pl-8 bg-white border-slate-200 text-xs h-9 shadow-xs"
                         />
                       </div>
@@ -742,7 +862,7 @@ export default function ManageLoads() {
                         <TableHeader className="bg-slate-50 border-b">
                           <TableRow>
                             <TableHead className="font-bold text-slate-600 text-xs w-[60px] text-center">Rank</TableHead>
-                            <TableHead className="font-bold text-slate-600 text-xs">Transporter</TableHead>
+                            <TableHead className="font-bold text-slate-600 text-xs">Users</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Vehicle Type</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Bid Amount</TableHead>
                             <TableHead className="font-bold text-slate-600 text-xs">Rate / T</TableHead>
@@ -763,7 +883,7 @@ export default function ManageLoads() {
                                 transition={{ type: 'spring', stiffness: 220, damping: 20 }}
                                 key={bid.id} 
                                 className={`border-b group hover:bg-slate-50/80 transition-colors ${
-                                  bid.status === 'Approved' ? 'bg-green-50/20' : ''
+                                  bid.status === 'Approved' || bid.status === 'ACCEPTED' ? 'bg-green-50/20' : ''
                                 }`}
                               >
                                 {/* Rank */}
@@ -777,15 +897,26 @@ export default function ManageLoads() {
                                   </span>
                                 </TableCell>
 
-                                {/* Transporter Profile */}
+                                {/* Users Column (incorporating Transporters & Drivers) */}
                                 <TableCell className="font-bold text-slate-800 text-xs">
-                                  <div className="flex flex-col">
-                                    <span 
-                                      onClick={() => setViewingTransporter(bid.transporterDetails)}
-                                      className="hover:underline hover:text-green-700 cursor-pointer"
-                                    >
-                                      {bid.transporterName}
-                                    </span>
+                                  <div className="flex flex-col gap-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span 
+                                        onClick={() => setViewingTransporter(bid.transporterDetails)}
+                                        className="hover:underline hover:text-green-700 cursor-pointer font-bold"
+                                      >
+                                        {bid.transporterName}
+                                      </span>
+                                      {(bid as any).role === 'Driver' ? (
+                                        <Badge className="bg-indigo-50 text-indigo-700 border border-indigo-100 hover:bg-indigo-100 text-[9px] font-bold px-1.5 py-0">
+                                          Driver
+                                        </Badge>
+                                      ) : (
+                                        <Badge className="bg-emerald-50 text-emerald-700 border border-emerald-100 hover:bg-emerald-100 text-[9px] font-bold px-1.5 py-0">
+                                          Transporter
+                                        </Badge>
+                                      )}
+                                    </div>
                                     <span className="text-[9px] text-slate-400 font-medium">Exp: {bid.experienceYears} Years</span>
                                   </div>
                                 </TableCell>
@@ -817,19 +948,22 @@ export default function ManageLoads() {
                                 {/* Verification Status Badges */}
                                 <TableCell>
                                   <div className="flex flex-wrap gap-1 max-w-[150px]">
-                                    {bid.verificationStatus.map((vStatus, idx) => (
-                                      <span 
-                                        key={idx} 
-                                        className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
-                                          vStatus === 'Trusted Transporter' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
-                                          vStatus === 'KYC Verified' ? 'bg-green-50 text-green-700 border border-green-100' :
-                                          vStatus === 'Insurance Valid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-100 text-gray-600'
-                                        }`}
-                                      >
-                                        {vStatus === 'KYC Verified' && <ShieldCheck size={9} />}
-                                        {vStatus}
-                                      </span>
-                                    ))}
+                                    {bid.verificationStatus.map((vStatus, idx) => {
+                                      const displayStatus = (bid as any).role === 'Driver' && vStatus === 'Trusted Transporter' ? 'Trusted Driver' : vStatus;
+                                      return (
+                                        <span 
+                                          key={idx} 
+                                          className={`text-[9px] font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${
+                                            displayStatus === 'Trusted Transporter' || displayStatus === 'Trusted Driver' ? 'bg-blue-50 text-blue-700 border border-blue-100' :
+                                            displayStatus === 'KYC Verified' ? 'bg-green-50 text-green-700 border border-green-100' :
+                                            displayStatus === 'Insurance Valid' ? 'bg-emerald-50 text-emerald-700 border border-emerald-100' : 'bg-gray-100 text-gray-600'
+                                          }`}
+                                        >
+                                          {displayStatus === 'KYC Verified' && <ShieldCheck size={9} />}
+                                          {displayStatus}
+                                        </span>
+                                      );
+                                    })}
                                   </div>
                                 </TableCell>
 
@@ -1068,73 +1202,96 @@ export default function ManageLoads() {
       {/* NESTED MODAL: Carrier Profile Credentials Viewer */}
       <Dialog open={!!viewingTransporter} onOpenChange={(val) => !val && setViewingTransporter(null)}>
         <DialogContent className="sm:max-w-[450px] border-0 rounded-2xl shadow-2xl overflow-hidden bg-white p-0">
-          {viewingTransporter && (
-            <>
-              <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
-                <div className="space-y-1">
-                  <span className="text-[10px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded">VERIFIED CARRIER</span>
-                  <DialogTitle className="text-base font-bold tracking-tight">{viewingTransporter.companyName}</DialogTitle>
-                </div>
-                <Button variant="ghost" size="icon" onClick={() => setViewingTransporter(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-800">
-                  <X size={16} />
-                </Button>
-              </div>
-
-              <div className="p-6 space-y-4 text-sm text-slate-700">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Owner Name</p>
-                    <p className="font-semibold text-slate-800">{viewingTransporter.ownerName}</p>
+          {viewingTransporter && (() => {
+            const isDriver = (viewingTransporter as any).role === 'Driver' || isCarrierDriver(viewingTransporter.companyName, viewingTransporter.ownerName);
+            return (
+              <>
+                <div className="p-6 bg-slate-900 text-white flex items-center justify-between">
+                  <div className="space-y-1">
+                    {isDriver ? (
+                      <span className="text-[10px] font-bold bg-indigo-500/20 text-indigo-400 border border-indigo-500/30 px-2 py-0.5 rounded uppercase">
+                        Verified Individual Driver
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded uppercase">
+                        Verified Corporate Carrier
+                      </span>
+                    )}
+                    <DialogTitle className="text-base font-bold tracking-tight">{viewingTransporter.companyName}</DialogTitle>
                   </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Fleet Size</p>
-                    <p className="font-semibold text-slate-800">{viewingTransporter.fleetSize} Active Trucks</p>
-                  </div>
+                  <Button variant="ghost" size="icon" onClick={() => setViewingTransporter(null)} className="h-8 w-8 rounded-full text-slate-400 hover:text-white hover:bg-slate-800">
+                    <X size={16} />
+                  </Button>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Trips Completed</p>
-                    <p className="font-semibold text-slate-800">{viewingTransporter.completedTrips}+ Safe Trips</p>
+                <div className="p-6 space-y-4 text-sm text-slate-700">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        {isDriver ? 'Driver Name' : 'Owner Name'}
+                      </p>
+                      <p className="font-semibold text-slate-800">
+                        {isDriver ? viewingTransporter.companyName : viewingTransporter.ownerName}
+                      </p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        {isDriver ? 'License Class' : 'Fleet Size'}
+                      </p>
+                      <p className="font-semibold text-slate-800">
+                        {isDriver ? 'Commercial Heavy HZV' : `${viewingTransporter.fleetSize} Active Trucks`}
+                      </p>
+                    </div>
                   </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Experience</p>
-                    <p className="font-semibold text-slate-800">{viewingTransporter.experienceYears} Years Operational</p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">Trips Completed</p>
+                      <p className="font-semibold text-slate-800">{viewingTransporter.completedTrips}+ Safe Trips</p>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        {isDriver ? 'Driving Experience' : 'Experience'}
+                      </p>
+                      <p className="font-semibold text-slate-800">{viewingTransporter.experienceYears} Years Operational</p>
+                    </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">KYC Verification</p>
+                      <Badge className="bg-green-100 text-green-800 border-none font-bold text-[10px] px-2.5">
+                        {viewingTransporter.kycStatus}
+                      </Badge>
+                    </div>
+                    <div className="space-y-0.5">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase">
+                        {isDriver ? 'Driver Insurance' : 'Insurance Validity'}
+                      </p>
+                      <p className="font-semibold text-emerald-700 flex items-center gap-1 text-xs">
+                        <ShieldCheck size={13} /> {viewingTransporter.insuranceValidity}
+                      </p>
+                    </div>
+                  </div>
+
+                  {viewingTransporter.remarks && (
+                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
+                      <p className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
+                        <MessageSquare size={11} /> Negotiation Comments
+                      </p>
+                      <p className="text-xs italic text-slate-600 mt-1">{viewingTransporter.remarks}</p>
+                    </div>
+                  )}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 border-t border-slate-100 pt-4">
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">KYC Verification</p>
-                    <Badge className="bg-green-100 text-green-800 border-none font-bold text-[10px] px-2.5">
-                      {viewingTransporter.kycStatus}
-                    </Badge>
-                  </div>
-                  <div className="space-y-0.5">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase">Insurance Validity</p>
-                    <p className="font-semibold text-emerald-700 flex items-center gap-1 text-xs">
-                      <ShieldCheck size={13} /> {viewingTransporter.insuranceValidity}
-                    </p>
-                  </div>
+                <div className="p-4 bg-slate-50 border-t flex justify-end">
+                  <Button onClick={() => setViewingTransporter(null)} className="bg-slate-900 hover:bg-slate-800 text-white h-9 px-4">
+                    Close Profile
+                  </Button>
                 </div>
-
-                {viewingTransporter.remarks && (
-                  <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 mt-2">
-                    <p className="text-[10px] text-slate-400 font-bold uppercase flex items-center gap-1">
-                      <MessageSquare size={11} /> Negotiation Comments
-                    </p>
-                    <p className="text-xs italic text-slate-600 mt-1">{viewingTransporter.remarks}</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="p-4 bg-slate-50 border-t flex justify-end">
-                <Button onClick={() => setViewingTransporter(null)} className="bg-slate-900 hover:bg-slate-800 text-white h-9 px-4">
-                  Close Profile
-                </Button>
-              </div>
-            </>
-          )}
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 

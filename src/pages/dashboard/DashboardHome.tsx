@@ -114,16 +114,38 @@ export default function DashboardHome() {
     ].filter(p => p.value > 0);
   }, [loads, stats]);
 
-  // Standard dispatch versus revenue weekly mock bar chart
-  const barData = [
-    { name: 'Mon', loads: 4, revenue: 85 },
-    { name: 'Tue', loads: 7, revenue: 140 },
-    { name: 'Wed', loads: 5, revenue: 110 },
-    { name: 'Thu', loads: 9, revenue: 195 },
-    { name: 'Fri', loads: 12, revenue: 260 },
-    { name: 'Sat', loads: 6, revenue: 130 },
-    { name: 'Sun', loads: 3, revenue: 65 },
-  ]
+  // Dynamic dispatch versus revenue weekly bar chart based on actual loaded stores
+  const barData = useMemo(() => {
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const sequence = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    
+    const dayMap: Record<string, { loads: number; revenue: number }> = {
+      'Mon': { loads: 0, revenue: 0 },
+      'Tue': { loads: 0, revenue: 0 },
+      'Wed': { loads: 0, revenue: 0 },
+      'Thu': { loads: 0, revenue: 0 },
+      'Fri': { loads: 0, revenue: 0 },
+      'Sat': { loads: 0, revenue: 0 },
+      'Sun': { loads: 0, revenue: 0 },
+    };
+
+    loads.forEach((load) => {
+      if (!load.dispatchDate) return;
+      const date = new Date(load.dispatchDate);
+      if (isNaN(date.getTime())) return;
+      const dayName = days[date.getDay()];
+      if (dayMap[dayName]) {
+        dayMap[dayName].loads += 1;
+        dayMap[dayName].revenue += Math.round((load.totalFreight || 0) / 1000); // Expressed in ₹K as the chart legend specifies
+      }
+    });
+
+    return sequence.map(name => ({
+      name,
+      loads: dayMap[name].loads,
+      revenue: dayMap[name].revenue
+    }));
+  }, [loads]);
 
   const formatRevenue = (value: number) => {
     if (value >= 100000) {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   UserCheck, Search, Filter, MoreHorizontal, CheckCircle2, 
   XCircle, AlertCircle, Clock, ShieldCheck, Eye, Truck, MapPin, 
@@ -16,15 +16,156 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useTransporterStore, type TransporterProfile, type DocumentStatus } from '@/store/transporterStore';
 import { useToast } from '@/hooks/use-toast';
+import { apiClient } from '@/services/apiClient';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Transporters() {
   const { toast } = useToast();
   const { transporters, notifications, updateTransporter, verifyDocument, blacklistTransporter } = useTransporterStore();
   
+  // Backend Pending Users Integration States
+  const [backendPendingUsers, setBackendPendingUsers] = useState<TransporterProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isLiveMode, setIsLiveMode] = useState(false);
+  const [rejectionReason, setRejectionReason] = useState('');
+
   // Search filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('All');
+  
+  // Helper to map backend document types to frontend keys
+  const mapDocTypeToKey = (type: string): keyof TransporterProfile['documents'] => {
+    const t = type.toLowerCase().trim();
+    if (t.includes('aadhaar')) return 'aadhaar';
+    if (t.includes('pan')) return 'panCard';
+    if (t.includes('gst')) return 'gstCert';
+    if (t.includes('cheque')) return 'cancelledCheque';
+    if (t.includes('rc') || t.includes('registration')) return 'vehicleRc';
+    if (t.includes('insurance')) return 'insurance';
+    if (t.includes('fitness')) return 'fitnessCert';
+    if (t.includes('pollution') || t.includes('puc')) return 'pollutionCert';
+    if (t.includes('license') || t.includes('dl')) return 'drivingLicense';
+    if (t.includes('photo')) return 'vehiclePhotos';
+    return 'aadhaar'; // default fallback
+  };
+
+  const fetchBackendUsers = async () => {
+    setIsLoading(true);
+    try {
+      const connection = await apiClient.checkConnection();
+      if (connection.isConnected) {
+        const data = await apiClient.getPendingKycUsers();
+        const mapped = data.map((user: any) => {
+          const mappedDocuments: any = {
+            aadhaar: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            panCard: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            gstCert: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            cancelledCheque: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            vehicleRc: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            insurance: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            fitnessCert: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            pollutionCert: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            drivingLicense: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' },
+            vehiclePhotos: { status: 'Missing', remarks: 'Not uploaded', fileUrl: '' }
+          };
+
+          if (user.documents && Array.isArray(user.documents)) {
+            user.documents.forEach((doc: any) => {
+              const key = mapDocTypeToKey(doc.document_type);
+              const filename = doc.file_path ? doc.file_path.split(/[\\/]/).pop() : '';
+              const fileUrl = filename ? `${connection.url}/uploads/${filename}` : '';
+              
+              let status: DocumentStatus = 'Pending';
+              if (doc.status === 'APPROVED') status = 'Verified';
+              else if (doc.status === 'REJECTED') status = 'Rejected';
+              else if (doc.status === 'EXPIRED') status = 'Expired';
+              
+              mappedDocuments[key] = {
+                id: doc.id,
+                status,
+                remarks: doc.rejection_reason || 'Pending verification',
+                fileUrl
+              };
+            });
+          }
+
+          return {
+            id: user.id,
+            ownerName: user.name || 'Jane Doe',
+            companyName: user.role === 'Driver' ? `${user.name} (Driver)` : `${user.name} (Transporter)`,
+            mobile: user.mobile || '9876543210',
+            whatsapp: user.mobile || '9876543210',
+            email: `${(user.name || 'user').toLowerCase().replace(/\s+/g, '')}@example.com`,
+            address: 'Awaiting Audit Details',
+            city: 'Pending Location',
+            district: 'Pending District',
+            state: 'Pending State',
+            fleetSize: user.role === 'Driver' ? 1 : 5,
+            preferredRoutes: [],
+            vehicleTypes: [],
+            panNumber: 'PENDING',
+            gstNumber: 'PENDING',
+            bankName: 'PENDING',
+            bankAccount: 'PENDING',
+            ifsc: 'PENDING',
+            upiId: 'PENDING',
+            status: 'Pending' as const,
+            documents: mappedDocuments
+          };
+        });
+        setBackendPendingUsers(mapped);
+        setIsLiveMode(true);
+      } else {
+        setIsLiveMode(false);
+      }
+    } catch (error) {
+      console.error("Error fetching backend users:", error);
+      setIsLiveMode(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBackendUsers();
+  }, []);
+
+  const handleVerifyUserSubmit = async (userId: string, isApproved: boolean) => {
+    try {
+      setIsLoading(true);
+      await apiClient.verifyUser(userId, isApproved, isApproved ? undefined : rejectionReason);
+      
+      toast({
+        title: isApproved ? "Carrier Account Approved" : "Carrier Account Rejected",
+        description: isApproved 
+          ? "The carrier has been fully approved and notified. They can now bid on active loads." 
+          : "Rejection details successfully recorded. Driver has been notified to re-upload documents.",
+        className: isApproved ? "bg-green-600 text-white border-none font-bold shadow-md" : "bg-rose-600 text-white border-none font-bold shadow-md"
+      });
+
+      setSelectedProfile(null);
+      setRejectionReason('');
+      await fetchBackendUsers();
+    } catch (error: any) {
+      console.error("Error verifying user:", error);
+      toast({
+        title: "Verification Request Failed",
+        description: error.message || "An unexpected network error occurred while submitting review decisions.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Combine frontend mock database with backend pending reviews
+  const displayTransporters = useMemo(() => {
+    if (isLiveMode) {
+      // Remove all mock carriers entirely and show ONLY live backend pending users when connected
+      return backendPendingUsers;
+    }
+    return transporters;
+  }, [transporters, backendPendingUsers, isLiveMode]);
   
   // Drawer & Modal States
   const [selectedProfile, setSelectedProfile] = useState<TransporterProfile | null>(null);
@@ -42,23 +183,23 @@ export default function Transporters() {
 
   // Dynamic KPI Card Calculations
   const stats = useMemo(() => {
-    const total = transporters.length;
-    const pending = transporters.filter(t => t.status === 'Pending').length;
-    const approved = transporters.filter(t => t.status === 'Approved').length;
-    const blacklisted = transporters.filter(t => t.status === 'Blacklisted').length;
+    const total = displayTransporters.length;
+    const pending = displayTransporters.filter(t => t.status === 'Pending').length;
+    const approved = displayTransporters.filter(t => t.status === 'Approved').length;
+    const blacklisted = displayTransporters.filter(t => t.status === 'Blacklisted').length;
     
     // Count profiles with at least one expired document
-    const expiredDocs = transporters.filter(t => 
+    const expiredDocs = displayTransporters.filter(t => 
       Object.values(t.documents).some(d => d.status === 'Expired')
     ).length;
 
     // Sum fleet size of verified transporters
-    const activeFleet = transporters
+    const activeFleet = displayTransporters
       .filter(t => t.status === 'Approved')
       .reduce((sum, t) => sum + t.fleetSize, 0);
 
     return { total, pending, approved, blacklisted, expiredDocs, activeFleet };
-  }, [transporters]);
+  }, [displayTransporters]);
 
   // Real-time Duplicate Detection Scanner
   const duplicateAlerts = useMemo(() => {
@@ -67,13 +208,13 @@ export default function Transporters() {
     const gsts = new Map<string, TransporterProfile[]>();
     const mobiles = new Map<string, TransporterProfile[]>();
 
-    transporters.forEach(t => {
-      if (t.panNumber) {
+    displayTransporters.forEach(t => {
+      if (t.panNumber && t.panNumber !== 'PENDING') {
         const list = pans.get(t.panNumber) || [];
         list.push(t);
         pans.set(t.panNumber, list);
       }
-      if (t.gstNumber) {
+      if (t.gstNumber && t.gstNumber !== 'PENDING') {
         const list = gsts.get(t.gstNumber) || [];
         list.push(t);
         gsts.set(t.gstNumber, list);
@@ -111,12 +252,12 @@ export default function Transporters() {
     });
 
     return alerts;
-  }, [transporters]);
+  }, [displayTransporters]);
 
   // Real-time Expired Documents alerts
   const expiredAlerts = useMemo(() => {
     const alerts: { id: string; companyName: string; docKey: string; docName: string; transporter: TransporterProfile }[] = [];
-    transporters.forEach(t => {
+    displayTransporters.forEach(t => {
       Object.entries(t.documents).forEach(([key, doc]) => {
         if (doc.status === 'Expired') {
           alerts.push({
@@ -130,44 +271,25 @@ export default function Transporters() {
       });
     });
     return alerts;
-  }, [transporters]);
+  }, [displayTransporters]);
 
   // Left Section Queue: Pending reviews
   const pendingReviews = useMemo(() => {
-    return transporters.filter(t => t.status === 'Pending' || t.status === 'Under Review');
-  }, [transporters]);
+    return displayTransporters.filter(t => t.status === 'Pending' || t.status === 'Under Review');
+  }, [displayTransporters]);
 
-  // Left Section Queue: AI Risk & Compliance Score list
-  const aiRiskQueue = useMemo(() => {
-    return transporters.map(t => {
-      const docValues = Object.values(t.documents);
-      const verifiedDocs = docValues.filter(d => d.status === 'Verified').length;
-      const score = Math.round((verifiedDocs / docValues.length) * 100);
-      
-      let riskLevel: 'Safe' | 'Needs Review' | 'Critical' = 'Safe';
-      if (t.status === 'Blacklisted') riskLevel = 'Critical';
-      else if (score < 50) riskLevel = 'Critical';
-      else if (score < 80) riskLevel = 'Needs Review';
 
-      return {
-        transporter: t,
-        score,
-        riskLevel
-      };
-    });
-  }, [transporters]);
 
   // Filter transporters for admin registry
   const filteredTransporters = useMemo(() => {
-    return transporters.filter(t => {
+    return displayTransporters.filter(t => {
       const matchesSearch = 
         t.companyName.toLowerCase().includes(search.toLowerCase()) || 
         t.ownerName.toLowerCase().includes(search.toLowerCase()) || 
-        t.id.toLowerCase().includes(search.toLowerCase()) || 
+        t.email.toLowerCase().includes(search.toLowerCase()) || 
         t.city.toLowerCase().includes(search.toLowerCase()) ||
-        t.mobile.toLowerCase().includes(search.toLowerCase()) ||
-        (t.gstNumber && t.gstNumber.toLowerCase().includes(search.toLowerCase())) ||
-        (t.panNumber && t.panNumber.toLowerCase().includes(search.toLowerCase()));
+        t.state.toLowerCase().includes(search.toLowerCase()) ||
+        t.mobile.toLowerCase().includes(search.toLowerCase());
       
       let matchesFilter = true;
       if (statusFilter === 'Pending') matchesFilter = t.status === 'Pending';
@@ -180,31 +302,115 @@ export default function Transporters() {
 
       return matchesSearch && matchesFilter;
     });
-  }, [transporters, search, statusFilter]);
+  }, [displayTransporters, search, statusFilter]);
 
   // Document verification actions
-  const handleVerifyDoc = (transporterId: string, docKey: keyof TransporterProfile['documents'], status: DocumentStatus) => {
-    verifyDocument(transporterId, docKey, status, previewRemarks || 'Verified by KYC Audit');
+  const handleVerifyDoc = async (transporterId: string, docKey: keyof TransporterProfile['documents'], status: DocumentStatus) => {
+    const isBackendUser = backendPendingUsers.some(u => u.id === transporterId);
     
-    // Find updated transporter profile to refresh drawer state
-    const updated = transporters.find(t => t.id === transporterId);
-    if (updated) {
-      setSelectedProfile({
-        ...updated,
-        documents: {
-          ...updated.documents,
-          [docKey]: { ...updated.documents[docKey], status, remarks: previewRemarks || 'Verified by KYC Audit' }
-        }
-      });
-    }
+    let apiStatus: 'APPROVED' | 'REJECTED' | 'EXPIRED' | null = null;
+    if (status === 'Verified') apiStatus = 'APPROVED';
+    else if (status === 'Rejected') apiStatus = 'REJECTED';
+    else if (status === 'Expired') apiStatus = 'EXPIRED';
 
-    toast({
-      title: status === 'Verified' ? "Document Approved" : "Document Flagged",
-      description: `Document ${docKey} updated status to ${status}.`,
-      className: status === 'Verified' ? "bg-green-600 text-white border-none font-bold" : "bg-orange-600 text-white border-none font-bold"
-    });
-    setPreviewDocKey(null);
-    setPreviewRemarks('');
+    if (isBackendUser && apiStatus) {
+      // Find the document to get the unique id from backend
+      const user = backendPendingUsers.find(u => u.id === transporterId);
+      const docId = user?.documents[docKey]?.id;
+      if (!docId) {
+        toast({
+          title: "Verification Error",
+          description: "Document ID not found for backend verification.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        await apiClient.verifyDocument(
+          docId, 
+          apiStatus, 
+          apiStatus === 'REJECTED' ? (previewRemarks || 'Aadhaar Card photo is too blurry. Please upload a clear image.') : undefined
+        );
+        
+        toast({
+          title: status === 'Verified' ? "Document Approved" : status === 'Expired' ? "Document Expired" : "Document Rejected",
+          description: `Document has been successfully verified on the backend.`,
+          className: status === 'Verified' ? "bg-green-600 text-white border-none font-bold shadow-md" : "bg-rose-600 text-white border-none font-bold shadow-md"
+        });
+
+        setBackendPendingUsers(prev => prev.map(u => {
+          if (u.id === transporterId) {
+            const updatedDocs = {
+              ...u.documents,
+              [docKey]: {
+                ...u.documents[docKey],
+                status,
+                remarks: previewRemarks || (status === 'Verified' ? 'Verified by KYC Audit' : status === 'Expired' ? 'Document has expired' : 'Document rejected')
+              }
+            };
+            return {
+              ...u,
+              documents: updatedDocs
+            };
+          }
+          return u;
+        }));
+
+        setSelectedProfile(prev => {
+          if (prev && prev.id === transporterId) {
+            return {
+              ...prev,
+              documents: {
+                ...prev.documents,
+                [docKey]: {
+                  ...prev.documents[docKey],
+                  status,
+                  remarks: previewRemarks || (status === 'Verified' ? 'Verified by KYC Audit' : status === 'Expired' ? 'Document has expired' : 'Document rejected')
+                }
+              }
+            };
+          }
+          return prev;
+        });
+
+        setPreviewDocKey(null);
+        setPreviewRemarks('');
+        await fetchBackendUsers();
+      } catch (error: any) {
+        console.error("Error verifying document:", error);
+        toast({
+          title: "Document Verification Failed",
+          description: error.message || "An unexpected error occurred while saving verification choices.",
+          variant: "destructive"
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    } else {
+      verifyDocument(transporterId, docKey, status, previewRemarks || 'Verified by KYC Audit');
+      
+      // Find updated transporter profile to refresh drawer state
+      const updated = transporters.find(t => t.id === transporterId);
+      if (updated) {
+        setSelectedProfile({
+          ...updated,
+          documents: {
+            ...updated.documents,
+            [docKey]: { ...updated.documents[docKey], status, remarks: previewRemarks || 'Verified by KYC Audit' }
+          }
+        });
+      }
+
+      toast({
+        title: status === 'Verified' ? "Document Approved (Mock)" : status === 'Expired' ? "Document Expired (Mock)" : "Document Flagged (Mock)",
+        description: `Document ${docKey} updated status to ${status}.`,
+        className: status === 'Verified' ? "bg-green-600 text-white border-none font-bold" : "bg-orange-600 text-white border-none font-bold"
+      });
+      setPreviewDocKey(null);
+      setPreviewRemarks('');
+    }
   };
 
   const handleEditClick = (profile: TransporterProfile) => {
@@ -289,6 +495,16 @@ export default function Transporters() {
           <p className="text-sm text-slate-500 mt-1">Manage transporter registrations, KYC verification, and compliance approvals.</p>
         </div>
         <div className="flex items-center gap-3">
+          <Badge 
+            className={`px-3 py-1 text-xs font-bold flex items-center gap-1.5 rounded-full border transition-all duration-300 ${
+              isLiveMode 
+                ? "bg-emerald-50 border-emerald-200 text-emerald-800" 
+                : "bg-amber-50 border-amber-200 text-amber-800"
+            }`}
+          >
+            <span className={`w-2 h-2 rounded-full ${isLiveMode ? "bg-emerald-500 animate-pulse" : "bg-amber-500"}`} />
+            {isLiveMode ? "Live API Connected" : "Demo Mode"}
+          </Badge>
           {duplicateAlerts.length > 0 && (
             <Badge className="bg-amber-50 border border-amber-200 text-amber-800 px-3 py-1 text-xs font-bold animate-pulse flex items-center gap-1.5 rounded-full">
               <ShieldAlert size={13} className="text-amber-600" />
@@ -451,45 +667,7 @@ export default function Transporters() {
             </CardContent>
           </Card>
 
-          {/* AI Risk Radar: Trust Scores */}
-          <Card className="border-0 shadow-sm bg-white overflow-hidden">
-            <CardHeader className="border-b border-slate-50 p-5 bg-slate-50/20">
-              <CardTitle className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                <Cpu size={14} className="text-slate-800" /> AI Trust Audit & Verification Scores
-              </CardTitle>
-              <CardDescription className="text-[11px] text-slate-400 mt-0.5">Algorithmic risk evaluation based on verified documentation ratios.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-5 space-y-4 max-h-[300px] overflow-y-auto custom-scrollbar">
-              {aiRiskQueue.map((item) => (
-                <div key={item.transporter.id} className="space-y-2 border-b border-slate-100 pb-3 last:border-0 last:pb-0">
-                  <div className="flex justify-between items-center text-xs">
-                    <div>
-                      <p className="font-bold text-slate-800">{item.transporter.companyName}</p>
-                      <span className="text-[9px] text-slate-400 font-mono">ID: {item.transporter.id}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className={`font-bold font-mono text-xs ${
-                        item.riskLevel === 'Safe' ? 'text-emerald-600' :
-                        item.riskLevel === 'Needs Review' ? 'text-amber-600' : 'text-rose-600'
-                      }`}>
-                        {item.score}% TRUST
-                      </span>
-                      <p className="text-[9px] text-slate-400 font-medium capitalize">{item.riskLevel} Risk</p>
-                    </div>
-                  </div>
-                  <div className="w-full bg-slate-100 rounded-full h-1.5">
-                    <div 
-                      className={`h-1.5 rounded-full transition-all duration-500 ${
-                        item.riskLevel === 'Safe' ? 'bg-emerald-500' :
-                        item.riskLevel === 'Needs Review' ? 'bg-amber-500' : 'bg-rose-500'
-                      }`}
-                      style={{ width: `${item.score}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
+
 
           {/* Duplicate Detection Alerts */}
           <Card className="border-0 shadow-sm bg-white overflow-hidden">
@@ -541,13 +719,13 @@ export default function Transporters() {
             <CardHeader className="pb-3 border-b border-slate-100">
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 
-                {/* Search Bar matching Name, Mobile, GST, PAN */}
+                {/* Search Bar matching Name, Mobile, Email, City, State */}
                 <div className="relative w-full max-w-sm">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={16} />
                   <Input 
                     value={search}
                     onChange={e => setSearch(e.target.value)}
-                    placeholder="Search Name, Phone, GSTIN or PAN..." 
+                    placeholder="Search Name, Mobile, Email, City or State..." 
                     className="pl-9 bg-gray-50 border-gray-200 text-xs h-9" 
                   />
                 </div>
@@ -576,11 +754,11 @@ export default function Transporters() {
                 <Table>
                   <TableHeader className="bg-slate-50/50">
                     <TableRow>
-                      <TableHead className="font-bold text-slate-500 uppercase text-[10px] pl-6 py-3.5">Carrier / Account ID</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Owner / Mobile</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Fleet size</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase text-[10px] text-center">AI Trust Score</TableHead>
-                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Documents Uploaded</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase text-[10px] pl-6 py-3.5">Name</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Mobile</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Email</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">City</TableHead>
+                      <TableHead className="font-bold text-slate-500 uppercase text-[10px]">State</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase text-[10px]">Verification Status</TableHead>
                       <TableHead className="font-bold text-slate-500 uppercase text-[10px] text-right pr-6">Audit Actions</TableHead>
                     </TableRow>
@@ -616,45 +794,25 @@ export default function Transporters() {
                                       <Badge className="bg-rose-100 text-rose-800 text-[8px] font-bold border-none px-1 py-0 h-4">Expired Docs</Badge>
                                     )}
                                   </p>
-                                  <p className="text-[9px] text-gray-400 font-mono uppercase font-bold">{tr.id}</p>
+                                  <p className="text-[10px] text-slate-500 mt-0.5">{tr.ownerName}</p>
                                 </div>
                               </div>
                             </TableCell>
 
                             <TableCell>
-                              <div className="flex flex-col">
-                                <span className="text-xs font-medium text-slate-800 flex items-center gap-1"><User size={10} className="text-slate-400" /> {tr.ownerName}</span>
-                                <span className="text-[10px] text-slate-500 mt-0.5">{tr.mobile}</span>
-                              </div>
+                              <span className="text-xs font-medium text-slate-800">{tr.mobile}</span>
                             </TableCell>
 
                             <TableCell>
-                              <Badge variant="outline" className="border-slate-200 text-slate-600 font-bold text-[9px] px-2 py-0.5">
-                                {tr.fleetSize} Heavy Fleet
-                              </Badge>
-                            </TableCell>
-
-                            <TableCell className="text-center">
-                              <div className="inline-flex flex-col items-center">
-                                <span className={`font-mono text-xs font-extrabold px-2 py-0.5 rounded-full ${
-                                  score >= 80 ? 'bg-emerald-50 text-emerald-700' :
-                                  score >= 50 ? 'bg-amber-50 text-amber-700' : 'bg-rose-50 text-rose-700'
-                                }`}>
-                                  {score}%
-                                </span>
-                              </div>
+                              <span className="text-xs text-slate-600 font-medium">{tr.email}</span>
                             </TableCell>
 
                             <TableCell>
-                              <div className="flex items-center gap-1 text-slate-300">
-                                {/* DL, PAN, GST, Insurance, RC, Cancelled Cheque */}
-                                <span className={tr.documents.aadhaar.status === 'Verified' ? "text-emerald-500" : tr.documents.aadhaar.status === 'Expired' ? "text-rose-500" : tr.documents.aadhaar.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="Aadhaar ID"><CheckCircle2 size={13} /></span>
-                                <span className={tr.documents.panCard.status === 'Verified' ? "text-emerald-500" : tr.documents.panCard.status === 'Expired' ? "text-rose-500" : tr.documents.panCard.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="PAN Card"><CheckCircle2 size={13} /></span>
-                                <span className={tr.documents.gstCert.status === 'Verified' ? "text-emerald-500" : tr.documents.gstCert.status === 'Expired' ? "text-rose-500" : tr.documents.gstCert.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="GST Certificate"><CheckCircle2 size={13} /></span>
-                                <span className={tr.documents.insurance.status === 'Verified' ? "text-emerald-500" : tr.documents.insurance.status === 'Expired' ? "text-rose-500" : tr.documents.insurance.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="Insurance Certificate"><CheckCircle2 size={13} /></span>
-                                <span className={tr.documents.vehicleRc.status === 'Verified' ? "text-emerald-500" : tr.documents.vehicleRc.status === 'Expired' ? "text-rose-500" : tr.documents.vehicleRc.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="RC Details"><CheckCircle2 size={13} /></span>
-                                <span className={tr.documents.drivingLicense.status === 'Verified' ? "text-emerald-500" : tr.documents.drivingLicense.status === 'Expired' ? "text-rose-500" : tr.documents.drivingLicense.status === 'Rejected' ? "text-rose-600" : "text-slate-300"} title="Driving License"><CheckCircle2 size={13} /></span>
-                              </div>
+                              <span className="text-xs text-slate-700 font-medium">{tr.city}</span>
+                            </TableCell>
+
+                            <TableCell>
+                              <span className="text-xs text-slate-600 font-medium">{tr.state}</span>
                             </TableCell>
 
                             <TableCell>{getStatusBadge(tr.status)}</TableCell>
@@ -785,6 +943,47 @@ export default function Transporters() {
                     )}
                   </div>
                 </div>
+
+                {/* KYC Verification Action Card for Pending status */}
+                {selectedProfile.status === 'Pending' && !isEditing && (
+                  <div className="border border-amber-100 bg-amber-50/20 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="text-amber-600 h-4 w-4" />
+                      <span className="text-xs font-bold text-amber-800 uppercase tracking-wider">Compliance KYC Actions</span>
+                    </div>
+                    <p className="text-xs text-slate-600 leading-normal">
+                      Please review all uploaded files below. If any files are blurry or incorrect, specify a rejection reason before rejecting.
+                    </p>
+                    
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase">Rejection Reason</label>
+                        <Input 
+                          value={rejectionReason}
+                          onChange={e => setRejectionReason(e.target.value)}
+                          placeholder="e.g. Aadhaar Card copy is too blurry. Please upload a clear image."
+                          className="bg-white h-9 text-xs font-normal"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <Button 
+                          onClick={() => handleVerifyUserSubmit(selectedProfile.id, true)}
+                          disabled={isLoading}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold h-9 uppercase text-[10px] tracking-wider"
+                        >
+                          {isLoading ? "Processing..." : "Approve Carrier"}
+                        </Button>
+                        <Button 
+                          onClick={() => handleVerifyUserSubmit(selectedProfile.id, false)}
+                          disabled={isLoading || !rejectionReason.trim()}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-100 font-bold h-9 uppercase text-[10px] tracking-wider disabled:opacity-50"
+                        >
+                          {isLoading ? "Processing..." : "Reject Carrier"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Edit Form or Display Specs */}
                 {isEditing ? (

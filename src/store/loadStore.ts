@@ -7,69 +7,7 @@ export type { Load, Bid, Transporter };
 
 // Top 7 Cheapest Mock Bids Generator
 const generateMockBids = (load: Load): Bid[] => {
-  const transporters = [
-    { name: 'FastFreight Solutions', owner: 'Ramesh Sharma', fleetSize: 45, trips: 1250, exp: 12, rating: 4.8 },
-    { name: 'SafeWay Express', owner: 'Vikram Singh', fleetSize: 32, trips: 840, exp: 8, rating: 4.6 },
-    { name: 'BlueDart Road Carrier', owner: 'Anil Mehta', fleetSize: 110, trips: 4200, exp: 15, rating: 4.9 },
-    { name: 'Agarwal Premium Movers', owner: 'Suresh Agarwal', fleetSize: 60, trips: 2300, exp: 10, rating: 4.7 },
-    { name: 'VRL Logistics Ltd', owner: 'Vijay Sankeshwar', fleetSize: 250, trips: 9800, exp: 20, rating: 4.9 },
-    { name: 'Gati Freight Services', owner: 'Rajesh Gupta', fleetSize: 85, trips: 3100, exp: 14, rating: 4.5 },
-    { name: 'TCI Transport Corporation', owner: 'Mahendra Agarwal', fleetSize: 150, trips: 6700, exp: 18, rating: 4.8 },
-    { name: 'Delhi Roadlines', owner: 'Sanjay Dutt', fleetSize: 18, trips: 450, exp: 5, rating: 4.2 },
-    { name: 'Speedex Logistics', owner: 'Mohit Chawla', fleetSize: 22, trips: 620, exp: 6, rating: 4.4 }
-  ];
-
-  // Pick 7 unique transporters randomly and generate competitive rates
-  const shuffled = [...transporters].sort(() => 0.5 - Math.random()).slice(0, 7);
-  const vehicleTypes = ['22-Tonne Open High Side', '19-Tonne Closed Box Container', '32-Tonne Open Trailer', '15-Tonne Triaxle', '22-Tonne Multi-axle'];
-
-  const bids: Bid[] = shuffled.map((t, idx) => {
-    const percentageVariation = -0.15 + Math.random() * 0.25; 
-    const pricePerTonne = Math.round(load.ratePerTonne * (1 + percentageVariation));
-    const bidAmount = Math.round(pricePerTonne * load.tonnes);
-    const vehicleType = vehicleTypes[Math.floor(Math.random() * vehicleTypes.length)];
-    const etaHours = Math.floor(6 + Math.random() * 36);
-    
-    const verificationOptions: ('KYC Verified' | 'Insurance Valid' | 'Trusted Transporter' | 'New Bidder')[][] = [
-      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
-      ['KYC Verified', 'Insurance Valid'],
-      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
-      ['KYC Verified', 'Insurance Valid', 'New Bidder'],
-      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter'],
-      ['KYC Verified', 'Insurance Valid'],
-      ['KYC Verified', 'Insurance Valid', 'Trusted Transporter']
-    ];
-
-    return {
-      id: `BID-2026-${1000 + Math.floor(Math.random() * 9000)}`,
-      rank: 0,
-      transporterName: t.name,
-      vehicleType,
-      bidAmount,
-      pricePerTonne,
-      eta: `${etaHours} hrs`,
-      driverRating: t.rating,
-      experienceYears: t.exp,
-      verificationStatus: verificationOptions[idx % verificationOptions.length],
-      status: 'Pending',
-      transporterDetails: {
-        companyName: t.name,
-        ownerName: t.owner,
-        fleetSize: t.fleetSize,
-        completedTrips: t.trips,
-        insuranceValidity: '31 Dec 2026',
-        kycStatus: 'Verified',
-        rating: t.rating,
-        experienceYears: t.exp
-      }
-    };
-  });
-
-  const sortedBids = bids.sort((a, b) => a.bidAmount - b.bidAmount);
-  return sortedBids.map((b, index) => ({
-    ...b,
-    rank: index + 1
-  }));
+  return [];
 };
 
 interface LoadState {
@@ -166,7 +104,6 @@ export const useLoadStore = create<LoadState>((set, get) => ({
   },
 
   fetchBidsForLoad: async (loadId) => {
-    if (get().connectionMode !== 'live') return;
     try {
       // Look up target bidId from our local record mapping
       const targetLoad = get().loads.find(l => l.id === loadId || l.bidId === loadId);
@@ -259,12 +196,13 @@ export const useLoadStore = create<LoadState>((set, get) => ({
     set({ loads: updatedLoads });
     loadService.saveLoads(updatedLoads);
 
-    if (get().connectionMode === 'live') {
-      try {
-        await apiClient.approveBid(bidId);
-      } catch (err) {
-        console.error("Failed to sync bid approval to backend:", err);
-      }
+    try {
+      await apiClient.approveBid(bidId);
+      await get().fetchLoads();
+      await get().fetchBidsForLoad(loadId);
+    } catch (err) {
+      console.error("Failed to sync bid approval to backend:", err);
+      throw err;
     }
   },
 
@@ -289,7 +227,7 @@ export const useLoadStore = create<LoadState>((set, get) => ({
         }
 
         // IF ALL REJECTED: Load status: Awaiting New Bids
-        const allRejected = updatedBids.every(b => b.status === 'Rejected');
+        const allRejected = updatedBids.every(b => b.status === 'Rejected' || b.status === 'REJECTED');
         const loadStatus = allRejected ? ('Awaiting New Bids' as const) : l.status;
 
         return {

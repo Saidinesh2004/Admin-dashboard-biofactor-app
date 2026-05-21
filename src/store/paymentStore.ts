@@ -25,36 +25,7 @@ interface PaymentState {
 }
 
 export const usePaymentStore = create<PaymentState>((set, get) => ({
-  payments: [
-    {
-      paymentId: "PAY-8801",
-      loadId: "LD-1001",
-      transporter: "Delhi Roadlines",
-      amount: 55000,
-      penalty: 0,
-      tax: 2750,
-      extraCharges: 1000,
-      finalAmount: 56750,
-      status: "Released",
-      createdAt: "2026-05-15",
-      invoiceId: "INV-1001",
-      paymentMethod: "RTGS"
-    },
-    {
-      paymentId: "PAY-8802",
-      loadId: "LD-1002",
-      transporter: "SafeWay Express",
-      amount: 27000,
-      penalty: 0,
-      tax: 1350,
-      extraCharges: 0,
-      finalAmount: 28350,
-      status: "Pending",
-      createdAt: "2026-05-17",
-      invoiceId: "INV-1002",
-      paymentMethod: "Bank Transfer"
-    }
-  ],
+  payments: [],
 
   addPayment: (payment) => {
     const idSuffix = Math.floor(1000 + Math.random() * 9000);
