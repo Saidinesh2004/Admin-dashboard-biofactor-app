@@ -19,7 +19,10 @@ import { useLoadStore, type Load, type Bid, type Transporter } from '@/store/loa
 import { exportToExcel } from '@/utils/exportCsv';
 
 // Helper to identify if an assigned or selected carrier is a Driver vs Transporter
-const isCarrierDriver = (carrierName: string, ownerName?: string) => {
+const isCarrierDriver = (carrierName: string, ownerName?: string, role?: string) => {
+  if (role) {
+    return role.toLowerCase() === 'driver';
+  }
   return ownerName === 'Self-Employed Driver' || 
          carrierName === 'Vikram Singh' || 
          carrierName === 'Suresh Agarwal' || 
@@ -30,7 +33,7 @@ const isCarrierDriver = (carrierName: string, ownerName?: string) => {
 
 export default function ManageLoads() {
   const { toast } = useToast();
-  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads, fetchBidsForLoad } = useLoadStore();
+  const { loads, updateLoad, deleteLoad, approveBid, rejectBid, negotiateBid, autoCloseExpiredLoads, fetchBidsForLoad, connectionMode } = useLoadStore();
   
   // Filtering & Search for Main Table
   const [search, setSearch] = useState('');
@@ -127,7 +130,28 @@ export default function ManageLoads() {
     
     // Transform / enrich bids to show a mix of Transporters and Drivers dynamically
     let list = selectedLoad.bids.map((bid, idx) => {
-      // Deterministic classification: odd indices are individual Drivers, even are corporate Transporters
+      // If we are connected to the live backend API, display real names and roles exactly as submitted
+      if (connectionMode === 'live') {
+        const isDriver = bid.role ? (bid.role.toLowerCase() === 'driver') : false;
+        return {
+          ...bid,
+          role: isDriver ? ('Driver' as const) : ('Transporter' as const),
+          transporterName: bid.transporterName || 'Carrier',
+          transporterDetails: {
+            companyName: bid.transporterName || 'Carrier',
+            ownerName: bid.transporterDetails?.ownerName || bid.transporterName || 'Owner',
+            fleetSize: Number(bid.transporterDetails?.fleetSize || (isDriver ? 1 : 10)),
+            completedTrips: Number(bid.transporterDetails?.completedTrips || 100),
+            insuranceValidity: bid.transporterDetails?.insuranceValidity || 'Valid',
+            kycStatus: bid.transporterDetails?.kycStatus || 'Verified',
+            rating: Number(bid.driverRating || 4.5),
+            experienceYears: Number(bid.experienceYears || 5),
+            role: isDriver ? ('Driver' as const) : ('Transporter' as const)
+          }
+        };
+      }
+
+      // Otherwise, fallback to the demo offline mock generation
       const isDriver = idx % 2 !== 0;
       
       const corporateNames = [
@@ -777,7 +801,7 @@ export default function ManageLoads() {
 
                   {/* Assigned Transporter details */}
                   {selectedLoad.assignedTransporter && (() => {
-                    const isDriver = isCarrierDriver(selectedLoad.assignedTransporter.companyName, selectedLoad.assignedTransporter.ownerName);
+                    const isDriver = isCarrierDriver(selectedLoad.assignedTransporter.companyName, selectedLoad.assignedTransporter.ownerName, (selectedLoad.assignedTransporter as any).role);
                     return (
                       <Card className={`border shadow-none overflow-hidden ${isDriver ? 'border-indigo-200 bg-indigo-50/30' : 'border-blue-200 bg-blue-50/30'}`}>
                         <div className={`p-3.5 border-b text-xs font-bold flex items-center gap-1.5 ${isDriver ? 'bg-indigo-100/50 border-indigo-100 text-indigo-900' : 'bg-blue-100/50 border-blue-100 text-blue-900'}`}>
@@ -1210,7 +1234,7 @@ export default function ManageLoads() {
       <Dialog open={!!viewingTransporter} onOpenChange={(val) => !val && setViewingTransporter(null)}>
         <DialogContent className="sm:max-w-[450px] border-0 rounded-2xl shadow-2xl overflow-hidden bg-white p-0">
           {viewingTransporter && (() => {
-            const isDriver = (viewingTransporter as any).role === 'Driver' || isCarrierDriver(viewingTransporter.companyName, viewingTransporter.ownerName);
+            const isDriver = (viewingTransporter as any).role === 'Driver' || isCarrierDriver(viewingTransporter.companyName, viewingTransporter.ownerName, (viewingTransporter as any).role);
             return (
               <>
                 <div className="p-6 bg-slate-900 text-white flex items-center justify-between">

@@ -25,6 +25,8 @@ export interface Bid {
   verificationStatus: ('KYC Verified' | 'Insurance Valid' | 'Trusted Transporter' | 'New Bidder')[];
   status: BidStatus;
   transporterDetails: Transporter;
+  role?: 'Driver' | 'Transporter';
+  userType?: 'Driver' | 'Transporter';
 }
 
 export interface Load {

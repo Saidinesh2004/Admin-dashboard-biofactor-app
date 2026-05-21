@@ -132,29 +132,37 @@ export const apiClient = {
     }
     const data = await response.json();
 
-    const mapped = data.map((b: any) => ({
-      id: b.quote_id || b.id || `BID-${Math.floor(1000 + Math.random() * 9000)}`,
-      rank: 0,
-      transporterName: b.transporter_name || b.company_name || 'Transporter',
-      vehicleType: b.vehicle_type || '22-Tonne Open High Side',
-      bidAmount: Number(b.bid_amount || 0),
-      pricePerTonne: Number(b.price_per_tonne || b.bid_amount / (b.tonnes || 1)),
-      eta: b.eta || '24 hrs',
-      driverRating: Number(b.driver_rating || 4.5),
-      experienceYears: Number(b.experience_years || 5),
-      verificationStatus: b.verification_status || ['KYC Verified', 'Trusted Transporter'],
-      status: b.status || 'Pending',
-      transporterDetails: {
-        companyName: b.transporter_name || b.company_name || 'Transporter',
-        ownerName: b.owner_name || 'Owner',
-        fleetSize: Number(b.fleet_size || 10),
-        completedTrips: Number(b.completed_trips || 100),
-        insuranceValidity: b.insurance_validity || 'Valid',
-        kycStatus: b.kyc_status || 'Verified',
-        rating: Number(b.rating || 4.5),
-        experienceYears: Number(b.experience_years || 5)
-      }
-    }));
+    const mapped = data.map((b: any) => {
+      const realName = b.user?.name || b.transporter_name || b.company_name || 'Transporter';
+      const realRole = b.user_type || b.role || b.user?.role || b.user?.user_type || (b.driver_name ? 'Driver' : 'Transporter');
+      
+      return {
+        id: b.quote_id || b.id || `BID-${Math.floor(1000 + Math.random() * 9000)}`,
+        rank: 0,
+        transporterName: realName,
+        vehicleType: b.vehicle_type || '22-Tonne Open High Side',
+        bidAmount: Number(b.bid_amount || 0),
+        pricePerTonne: Number(b.price_per_tonne || b.bid_amount / (b.tonnes || 1)),
+        eta: b.eta || '24 hrs',
+        driverRating: Number(b.driver_rating || 4.5),
+        experienceYears: Number(b.experience_years || 5),
+        verificationStatus: b.verification_status || ['KYC Verified', 'Trusted Transporter'],
+        status: b.status || 'Pending',
+        userType: realRole,
+        role: realRole,
+        transporterDetails: {
+          companyName: realName,
+          ownerName: b.user?.name || b.owner_name || 'Owner',
+          fleetSize: Number(b.fleet_size || (realRole === 'Driver' ? 1 : 10)),
+          completedTrips: Number(b.completed_trips || 100),
+          insuranceValidity: b.insurance_validity || 'Valid',
+          kycStatus: b.kyc_status || 'Verified',
+          rating: Number(b.rating || 4.5),
+          experienceYears: Number(b.experience_years || 5),
+          role: realRole
+        }
+      };
+    });
 
     mapped.sort((a: any, b: any) => a.bidAmount - b.bidAmount);
 
